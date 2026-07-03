@@ -1,6 +1,6 @@
 {
   "name": "tyrekick-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "MCP server for Tyrekick \u2014 pull reviewer feedback from your Cloudflare Worker into Claude Code (or any MCP client) and resolve it as you fix things.",
   "type": "module",
   "license": "MIT",
