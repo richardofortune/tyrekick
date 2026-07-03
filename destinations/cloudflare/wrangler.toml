@@ -1,9 +1,9 @@
-# wrangler.toml — Cloudflare Worker config for the Leapfrog destination.
+# wrangler.toml — Cloudflare Worker config for the Tyrekick destination.
 #
 # Minimal setup: one Worker + one KV namespace binding named FEEDBACK,
 # plus one secret (TYREKICK_TOKEN) for the read-back management routes.
 
-name = "leapfrog-feedback"
+name = "tyrekick-feedback"
 main = "worker.ts"
 compatibility_date = "2024-09-23"
 
@@ -38,3 +38,12 @@ id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
 # If the secret is NOT set, the management routes answer 401 for everyone
 # ("TYREKICK_TOKEN not configured") — they are never open by default.
 # Ingest (POST / and POST /feedback) stays unauthenticated either way.
+
+# --- Optional: Discord forwarding (tee) --------------------------------------
+# Set a Discord webhook URL as a second secret and every stored comment is ALSO
+# posted to that channel — humans get the ping, agents keep the queryable store:
+#
+#     wrangler secret put DISCORD_WEBHOOK
+#
+# Forwarding is fire-and-forget: a Discord outage or rate limit never affects
+# the ingest response the widget sees. Leave unset to disable.

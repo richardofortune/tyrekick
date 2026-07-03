@@ -14,7 +14,7 @@
  *   MANAGEMENT (token-gated — `Authorization: Bearer <TYREKICK_TOKEN>`):
  *     GET   /feedback?status=&route=&since=&limit=  — list, newest first
  *     GET   /feedback/:id                           — single full record
- *     PATCH /feedback/:id                           — resolve / reopen
+ *     PATCH /feedback/:id                           — triage (approve/decline) / resolve / reopen
  *
  * The management surface is the REST API that the tyrekick-mcp
  * MCP server talks to (see /mcp in the repo), so an AI agent can pull the
@@ -78,8 +78,12 @@ interface FeedbackPayload {
 
 /** What we actually store: the payload plus server-side lifecycle fields. */
 interface FeedbackRecord extends FeedbackPayload {
-  /** "open" on ingest; flipped via PATCH /feedback/:id. */
-  status: "open" | "resolved";
+  /**
+   * Triage ladder: "open" (new, untriaged) → "approved" (cleared for an agent
+   * to action) or "declined" (won't fix) → "resolved" (actioned). Set via
+   * PATCH /feedback/:id. Agents in shared-review mode act on "approved" only.
+   */
+  status: "open" | "approved" | "declined" | "resolved";
   /** ISO timestamp of when the Worker received the record. */
   received_at: string;
   /** ISO timestamp set when resolved, null while open. */
@@ -99,6 +103,8 @@ interface FeedbackMeta {
   s: string;
   /** route the comment was left on. */
   r: string;
+  /** project_name — lets one Worker serve many projects (?project= filter). */
+  p: string;
 }
 
 /*
@@ -130,6 +136,18 @@ interface Env {
    * every request (they are never open by default). Ingest ignores it.
    */
   TYREKICK_TOKEN?: string;
+  /**
+   * Optional: a Discord webhook URL (`wrangler secret put DISCORD_WEBHOOK`).
+   * When set, every successfully stored comment is ALSO forwarded to Discord
+   * as a readable message — humans get the channel ping, agents keep the
+   * queryable store. Fire-and-forget: forwarding can never fail an ingest.
+   */
+  DISCORD_WEBHOOK?: string;
+}
+
+/** Minimal ExecutionContext declaration (waitUntil is all we use). */
+interface ExecutionContext {
+  waitUntil(promise: Promise<unknown>): void;
 }
 
 /** Longest comment body we keep. Anything over this is truncated with an ellipsis. */
@@ -199,8 +217,33 @@ async function saveRecord(env: Env, record: FeedbackRecord): Promise<void> {
     t: record.created_at || record.received_at,
     s: record.status,
     r: record.route ?? "",
+    p: record.project_name ?? "",
   };
   await env.FEEDBACK.put(KEY_PREFIX + record.id, JSON.stringify(record), { metadata });
+}
+
+/**
+ * Forward a stored record to Discord as a readable message. Mirrors the
+ * widget's own "discord" transport format. Best-effort by design: called via
+ * ctx.waitUntil with all failures swallowed — a Discord outage, rate limit, or
+ * bad webhook URL must never affect the ingest response the widget sees.
+ */
+async function forwardToDiscord(webhook: string, record: FeedbackRecord): Promise<void> {
+  const el = (record.anchor?.element ?? null) as { tag?: string; text?: string | null } | null;
+  const anchorLabel =
+    (el?.text ? `<${el.tag ?? "?"}> "${el.text}"` : record.anchor?.selector) ||
+    `${record.anchor?.x_pct ?? "?"}%, ${record.anchor?.y_pct ?? "?"}%`;
+  const who = record.reviewer_name || "Anonymous";
+  let content =
+    `**${record.project_name} ${record.app_version}** — ${who}\n` +
+    `${record.body}\n` +
+    `${anchorLabel} · <${record.url}>`;
+  if (content.length > 1900) content = content.slice(0, 1900) + "…"; // Discord caps at 2000
+  await fetch(webhook, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content }),
+  });
 }
 
 /* ------------------------------------------------------------------------ */
@@ -208,7 +251,7 @@ async function saveRecord(env: Env, record: FeedbackRecord): Promise<void> {
 /* ------------------------------------------------------------------------ */
 
 /** POST / and POST /feedback — open ingest of a widget FeedbackPayload. */
-async function handleIngest(request: Request, env: Env): Promise<Response> {
+async function handleIngest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   // Parse the JSON body defensively — malformed JSON must not throw.
   let payload: FeedbackPayload;
   try {
@@ -252,6 +295,13 @@ async function handleIngest(request: Request, env: Env): Promise<Response> {
     return json({ ok: false, error: "storage_failed" }, 500);
   }
 
+  // Optional Discord tee: one pin feeds both tiers (channel ping for humans,
+  // queryable store for agents). Runs after the response via waitUntil; any
+  // failure is swallowed so forwarding can never break an ingest.
+  if (env.DISCORD_WEBHOOK) {
+    ctx.waitUntil(forwardToDiscord(env.DISCORD_WEBHOOK, record).catch(() => {}));
+  }
+
   // Success. HTTP 2xx + a body that is not {"ok":false} = the widget's
   // definition of a successful "json" submission.
   return json({ ok: true, id: record.id });
@@ -263,8 +313,15 @@ async function handleList(request: Request, env: Env): Promise<Response> {
   const status = url.searchParams.get("status");
   const route = url.searchParams.get("route");
   const since = url.searchParams.get("since");
+  const project = url.searchParams.get("project");
 
-  if (status !== null && status !== "open" && status !== "resolved") {
+  if (
+    status !== null &&
+    status !== "open" &&
+    status !== "approved" &&
+    status !== "declined" &&
+    status !== "resolved"
+  ) {
     return json({ ok: false, error: "invalid_status" }, 400);
   }
 
@@ -296,6 +353,9 @@ async function handleList(request: Request, env: Env): Promise<Response> {
     const m = k.metadata;
     if (status && (m?.s ?? "open") !== status) return false;
     if (route && (m?.r ?? "") !== route) return false;
+    // Exact project_name match. Records written before the `p` metadata field
+    // existed won't match a project filter (pre-release tradeoff, no migration).
+    if (project && (m?.p ?? "") !== project) return false;
     // ISO-8601 strings compare lexicographically in chronological order.
     if (since && (m?.t ?? "") < since) return false;
     return true;
@@ -350,7 +410,8 @@ async function handlePatch(request: Request, env: Env, id: string): Promise<Resp
     return json({ ok: false, error: "invalid_json" }, 400);
   }
   const nextStatus = body?.status;
-  if (nextStatus !== "resolved" && nextStatus !== "open") {
+  const VALID = ["open", "approved", "declined", "resolved"] as const;
+  if (!VALID.includes(nextStatus as (typeof VALID)[number])) {
     return json({ ok: false, error: "invalid_status" }, 400);
   }
   const note = typeof body?.note === "string" ? body.note : null;
@@ -365,10 +426,17 @@ async function handlePatch(request: Request, env: Env, id: string): Promise<Resp
     return json({ ok: false, error: "not found" }, 404);
   }
 
-  // Apply the transition. Reopening clears the resolution fields.
-  record.status = nextStatus;
-  if (nextStatus === "resolved") {
+  // Apply the transition.
+  //   resolved  → resolved_at = now, note = what was changed
+  //   declined  → resolved_at = now (doubles as the closed-at time), note = why
+  //   approved  → still open for action; note kept if provided
+  //   open      → full reset (reopen/un-triage)
+  record.status = nextStatus as FeedbackRecord["status"];
+  if (nextStatus === "resolved" || nextStatus === "declined") {
     record.resolved_at = new Date().toISOString();
+    record.resolution_note = note;
+  } else if (nextStatus === "approved") {
+    record.resolved_at = null;
     record.resolution_note = note;
   } else {
     record.resolved_at = null;
@@ -390,7 +458,7 @@ async function handlePatch(request: Request, env: Env, id: string): Promise<Resp
 /* ------------------------------------------------------------------------ */
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     // CORS preflight. Browsers send OPTIONS before a cross-origin POST that
     // carries a Content-Type: application/json header. Answer it with 204.
     if (request.method === "OPTIONS") {
@@ -409,13 +477,13 @@ export default {
 
     // POST / (back-compat) — open ingest.
     if (path === "/") {
-      if (request.method === "POST") return handleIngest(request, env);
+      if (request.method === "POST") return handleIngest(request, env, ctx);
       return json({ ok: false, error: "method_not_allowed" }, 405);
     }
 
     // /feedback (collection) — POST ingest (open) or GET list (token-gated).
     if (path.endsWith("/feedback")) {
-      if (request.method === "POST") return handleIngest(request, env);
+      if (request.method === "POST") return handleIngest(request, env, ctx);
       if (request.method === "GET") {
         return requireAuth(request, env) ?? handleList(request, env);
       }

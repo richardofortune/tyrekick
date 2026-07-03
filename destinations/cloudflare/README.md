@@ -143,6 +143,7 @@ or wrong token gets **401** `{"ok":false,"error":"unauthorized"}`. Ingest
 ### `GET /feedback` — list comments (newest first)
 
 Optional query params: `status` (`open`|`resolved`), `route` (exact match),
+`project` (exact `project_name` match — one Worker can serve many projects),
 `since` (ISO timestamp), `limit` (default 50, max 200).
 
 ```bash
@@ -167,6 +168,25 @@ if no such id.
 Body: `{ "status": "resolved" | "open", "note": "optional note" }`. Resolving
 sets `resolved_at` + `resolution_note`; reopening clears both. Returns the
 updated record.
+
+## Optional: forward every comment to Discord (tee)
+
+Want the human-friendly channel ping AND the agent-queryable store from one
+pin? Add your Discord webhook as a second secret:
+
+```bash
+wrangler secret put DISCORD_WEBHOOK    # paste your Discord webhook URL
+```
+
+Every successfully stored comment is then also posted to that channel in the
+same readable format the widget's `transport: "discord"` uses. Forwarding is
+fire-and-forget: a Discord outage, rate limit, or bad URL never affects the
+response the reviewer's widget sees, and nothing about the stored record
+changes. Leave the secret unset to disable.
+
+With the tee in place, point the widget at the Worker (default
+`transport: "json"`) — pointing it straight at Discord instead bypasses
+storage, and agents can't read Discord.
 
 ```bash
 curl -X PATCH \
