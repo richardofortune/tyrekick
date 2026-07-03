@@ -107,6 +107,30 @@ describe("data-* auto-init parsing", () => {
     expect(getShadow().textContent || "").not.toMatch(/Frontier Operations/i);
   });
 
+  it('data-theme="dark" pins the tk-dark host class', async () => {
+    fakeScript({
+      "data-webhook": "https://example.test/auto",
+      "data-app-version": "1.0.0",
+      "data-theme": "dark",
+    });
+    const mod = await import("../../src/auto");
+    destroyFn = (mod as { destroy?: () => void }).destroy;
+    expect(getHost().classList.contains("tk-dark")).toBe(true);
+    expect(getHost().classList.contains("tk-light")).toBe(false);
+  });
+
+  it("theme defaults to auto (resolves prefers-color-scheme; light in this env)", async () => {
+    fakeScript({
+      "data-webhook": "https://example.test/auto",
+      "data-app-version": "1.0.0",
+    });
+    const mod = await import("../../src/auto");
+    destroyFn = (mod as { destroy?: () => void }).destroy;
+    // The stubbed matchMedia never matches "(prefers-color-scheme: dark)".
+    expect(getHost().classList.contains("tk-light")).toBe(true);
+    expect(getHost().classList.contains("tk-dark")).toBe(false);
+  });
+
   it("shows the branding footer by default (branding attribute absent)", async () => {
     mockPointStack([]);
     fakeScript({
@@ -118,6 +142,26 @@ describe("data-* auto-init parsing", () => {
     enterCommentMode();
     clickPoint(200, 300);
     expect(getShadow().textContent || "").toMatch(/Frontier Operations/i);
+  });
+});
+
+describe("accent auto-contrast (accentInk)", () => {
+  it("light accents get dark ink for text ON the accent", async () => {
+    const { accentInk } = await import("../../src/ui/styles");
+    expect(accentInk("#FFC53D")).toBe("#16181D"); // default crayon yellow
+    expect(accentInk("#fff")).toBe("#16181D"); // 3-digit form
+  });
+
+  it("dark accents get white ink", async () => {
+    const { accentInk } = await import("../../src/ui/styles");
+    expect(accentInk("#4f46e5")).toBe("#FFFFFF");
+    expect(accentInk("#16181D")).toBe("#FFFFFF");
+  });
+
+  it("unparseable colours fall back to white ink", async () => {
+    const { accentInk } = await import("../../src/ui/styles");
+    expect(accentInk("rebeccapurple")).toBe("#FFFFFF");
+    expect(accentInk("rgb(255,255,255)")).toBe("#FFFFFF");
   });
 });
 

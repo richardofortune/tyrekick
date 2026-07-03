@@ -12,6 +12,22 @@ import { send } from "../transport/webhook";
 import type { FeedbackPayload } from "../types";
 
 const MAX = 2000;
+/** Counter switches from dimmed to the flag colour at this length. */
+const WARN = 1800;
+/** Mobile breakpoint: at/below this the composer is a bottom sheet (CSS). */
+const SHEET_MAX = 640;
+
+/**
+ * Human-readable description of what a pin is anchored to, used by the
+ * capture chip: element text → label → selector → percent fallback.
+ */
+export function chipLabel(anchor: Pin["anchor"]): string {
+  const el = anchor && anchor.element;
+  if (el && el.text) return el.tag + ' "' + el.text + '"';
+  if (el && el.label) return el.tag + ' "' + el.label + '"';
+  if (anchor && anchor.selector) return anchor.selector;
+  return anchor ? anchor.x_pct + "%, " + anchor.y_pct + "%" : "";
+}
 
 export function createPanel(rt: Runtime): Panel {
   let el: HTMLElement | null = null;
@@ -62,6 +78,7 @@ export function createPanel(rt: Runtime): Panel {
 
   function updateCounter(): void {
     counter.textContent = ta.value.length + " / " + MAX;
+    counter.classList.toggle("warn", ta.value.length >= WARN);
     submitBtn.disabled = sending || ta.value.trim().length === 0;
   }
 
@@ -77,6 +94,17 @@ export function createPanel(rt: Runtime): Panel {
     el.setAttribute("aria-modal", "true");
     el.setAttribute("aria-label", "Leave a comment");
     el.addEventListener("keydown", onKey);
+
+    // Capture chip: the machine-voice line naming what the pin is anchored to.
+    if (currentPin) {
+      const chip = document.createElement("div");
+      chip.className = "chip";
+      const lbl = chipLabel(currentPin.anchor);
+      chip.textContent = "⌖ " + lbl;
+      chip.setAttribute("aria-hidden", "false");
+      chip.setAttribute("aria-label", "Commenting on " + lbl);
+      el.appendChild(chip);
+    }
 
     ta = document.createElement("textarea");
     ta.maxLength = MAX;
@@ -137,6 +165,12 @@ export function createPanel(rt: Runtime): Panel {
 
   function position(pin: Pin): void {
     if (!el) return;
+    if (window.innerWidth <= SHEET_MAX) {
+      // Bottom-sheet mode: CSS places the composer; don't anchor to the pin.
+      el.style.left = "";
+      el.style.top = "";
+      return;
+    }
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const pw = el.offsetWidth || 300;
@@ -155,18 +189,29 @@ export function createPanel(rt: Runtime): Panel {
     el.style.top = top + "px";
   }
 
-  function open(pin: Pin): void {
+  function open(pin: Pin, prefill?: string): void {
     if (el) close(false);
     currentPin = pin;
     sending = false;
     build();
     position(pin);
-    if (rt.pendingDraft) {
+    if (prefill) {
+      ta.value = prefill;
+      updateCounter();
+    } else if (rt.pendingDraft) {
       ta.value = rt.pendingDraft.body || "";
       if (nameIn) nameIn.value = rt.pendingDraft.name || "";
       updateCounter();
     }
     ta.focus();
+    const n = ta.value.length;
+    if (n) {
+      try {
+        ta.setSelectionRange(n, n); // cursor at the end (after any prefill)
+      } catch {
+        /* ignore */
+      }
+    }
   }
 
   function buildPayload(pin: Pin, body: string, name: string): FeedbackPayload {
@@ -304,6 +349,9 @@ export function createPanel(rt: Runtime): Panel {
     currentPin = null;
     sending = false;
     rt.overlay.captureOn();
+    // A follow-up composer runs outside comment mode; tidy its pins away when
+    // nothing else is showing them.
+    if (!rt.overlay.isActive() && !rt.drawer.isOpen()) rt.overlay.hidePins();
     if (restoreFocus) rt.overlay.focus();
   }
 

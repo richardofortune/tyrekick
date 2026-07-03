@@ -24,6 +24,7 @@ function boot(): void {
       projectName: d.projectName,
       transport: d.transport as Transport | undefined,
       accent: d.accent,
+      theme: d.theme as "auto" | "light" | "dark" | undefined,
       position: d.position as Position | undefined,
       branding: d.branding === "false" ? false : undefined,
       captureErrors: d.captureErrors === "false" ? false : undefined,

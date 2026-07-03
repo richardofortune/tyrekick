@@ -19,7 +19,8 @@ test.describe("mobile (390×844)", () => {
     await expect(trigger).toBeVisible();
     await trigger.tap();
 
-    await expect(page.getByText(/click anywhere/i)).toBeVisible();
+    // Coarse-pointer devices get the touch wording of the hint.
+    await expect(page.getByText(/tap anywhere/i)).toBeVisible();
 
     // Tap a point to drop a pin.
     await page.touchscreen.tap(195, 420);

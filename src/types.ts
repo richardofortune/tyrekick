@@ -15,8 +15,14 @@ export interface TyrekickConfig {
   projectName?: string;
   /** Trigger button corner. Default: "bottom-right" */
   position?: Position;
-  /** Trigger + pin colour. Default: "#4f46e5" */
+  /** Trigger + pin colour. Default: "#FFC53D" */
   accent?: string;
+  /**
+   * Widget colour scheme. "auto" (default) follows the visitor's
+   * prefers-color-scheme at init and updates live when it changes;
+   * "light" / "dark" pin it. Host-page styles are never touched.
+   */
+  theme?: "auto" | "light" | "dark";
   /** Show the "Built by Frontier Operations" footer. Default: true */
   branding?: boolean;
   /** Optional reviewer-name input. Default: { name: true } */

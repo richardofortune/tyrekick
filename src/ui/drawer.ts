@@ -59,6 +59,19 @@ export function createDrawer(rt: Runtime): Drawer {
     }
   }
 
+  /**
+   * Sticky-note follow-up: close the drawer, bring the pin on screen, drop a
+   * NEW pending pin at the same spot (same anchor), and open the composer
+   * prefilled "Re #N: ". The prefix in the body is the only linkage — the
+   * payload stays a normal schema-v2 comment.
+   */
+  function followUp(p: Pin): void {
+    close();
+    locate(p);
+    const np = rt.overlay.addPin(p.docX, p.docY, p.anchor);
+    rt.panel.open(np, "Re #" + p.n + ": ");
+  }
+
   function renderList(): void {
     if (!list) return;
     list.textContent = "";
@@ -71,15 +84,18 @@ export function createDrawer(rt: Runtime): Drawer {
       return;
     }
     for (const p of pins) {
-      const entry = document.createElement("button");
-      entry.type = "button";
+      const entry = document.createElement("div");
       entry.className = "entry" + (p.status === "failed" ? " failed" : "");
-      entry.setAttribute("aria-label", "Go to comment " + p.n);
+
+      const go = document.createElement("button");
+      go.type = "button";
+      go.className = "entry-go";
+      go.setAttribute("aria-label", "Go to comment " + p.n);
 
       const n = document.createElement("span");
       n.className = "n";
       n.textContent = String(p.n);
-      entry.appendChild(n);
+      go.appendChild(n);
 
       const main = document.createElement("span");
       main.className = "entry-main";
@@ -96,9 +112,19 @@ export function createDrawer(rt: Runtime): Drawer {
       if (p.status === "failed") bits.push("not sent");
       meta.textContent = bits.join(" · ");
       main.appendChild(meta);
-      entry.appendChild(main);
+      go.appendChild(main);
 
-      entry.addEventListener("click", () => locate(p));
+      go.addEventListener("click", () => locate(p));
+      entry.appendChild(go);
+
+      const fu = document.createElement("button");
+      fu.type = "button";
+      fu.className = "followup";
+      fu.textContent = "Follow up";
+      fu.setAttribute("aria-label", "Add follow-up to comment " + p.n);
+      fu.addEventListener("click", () => followUp(p));
+      entry.appendChild(fu);
+
       list.appendChild(entry);
     }
   }

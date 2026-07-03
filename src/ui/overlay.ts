@@ -7,6 +7,18 @@ import type { Overlay, Pin, Runtime } from "../index";
 import { computeAnchor } from "../capture/anchor";
 
 const HINT_TEXT = "Click anywhere to leave a comment — Esc to cancel";
+const HINT_TEXT_TOUCH = "Tap anywhere to leave a comment";
+
+function hintText(): string {
+  try {
+    if (typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches) {
+      return HINT_TEXT_TOUCH;
+    }
+  } catch {
+    /* fall through */
+  }
+  return HINT_TEXT;
+}
 
 export function createOverlay(rt: Runtime): Overlay {
   const root = rt.root;
@@ -58,15 +70,14 @@ export function createOverlay(rt: Runtime): Overlay {
     exit();
   }
 
-  function pick(cx: number, cy: number): void {
-    if (rt.panel.isOpen()) return;
-    const anchor = computeAnchor(cx, cy, rt.host, capture);
+  /** Create a pending pin at document coords; "drop" runs the lock-on animation. */
+  function addPin(docX: number, docY: number, anchor: Pin["anchor"]): Pin {
     const pin: Pin = {
       n: rt.pins.length + 1,
-      docX: cx + window.scrollX,
-      docY: cy + window.scrollY,
-      clientX: cx,
-      clientY: cy,
+      docX,
+      docY,
+      clientX: docX - window.scrollX,
+      clientY: docY - window.scrollY,
       status: "pending",
       anchor,
       body: "",
@@ -76,7 +87,15 @@ export function createOverlay(rt: Runtime): Overlay {
     };
     rt.pins.push(pin);
     makePinEl(pin);
+    pin.el!.classList.add("drop");
     layout();
+    return pin;
+  }
+
+  function pick(cx: number, cy: number): void {
+    if (rt.panel.isOpen()) return;
+    const anchor = computeAnchor(cx, cy, rt.host, capture);
+    const pin = addPin(cx + window.scrollX, cy + window.scrollY, anchor);
     captureOff();
     rt.panel.open(pin);
   }
@@ -110,7 +129,7 @@ export function createOverlay(rt: Runtime): Overlay {
     hint = document.createElement("div");
     hint.className = "hint";
     const label = document.createElement("span");
-    label.textContent = HINT_TEXT;
+    label.textContent = hintText();
     const done = document.createElement("button");
     done.type = "button";
     done.textContent = "Done";
@@ -187,6 +206,7 @@ export function createOverlay(rt: Runtime): Overlay {
     layout,
     captureOn,
     captureOff,
+    addPin,
     removePin,
     showPins,
     hidePins,

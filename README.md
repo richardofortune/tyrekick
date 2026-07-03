@@ -123,7 +123,8 @@ Every field of `TyrekickConfig` (see [`src/types.ts`](src/types.ts)):
 | `appVersion` | `string` | **yes** | — | Version string of the prototype under review. |
 | `projectName` | `string` | no | `document.title` | Human label for the project. |
 | `position` | `"bottom-right" \| "bottom-left"` | no | `"bottom-right"` | Trigger button corner. |
-| `accent` | `string` | no | `"#4f46e5"` | Trigger + pin colour. |
+| `accent` | `string` | no | `"#FFC53D"` | Accent for the trigger, pins, and Send button. Text on the accent auto-contrasts (dark ink on light accents, white on dark). |
+| `theme` | `"auto" \| "light" \| "dark"` | no | `"auto"` | Widget colour scheme. `"auto"` follows the visitor's `prefers-color-scheme` at init and updates live when it changes. Use `data-theme` on the script tag for the auto-init build. |
 | `branding` | `boolean` | no | `true` | Show the "Built by Frontier Operations" footer. |
 | `fields` | `{ name?: boolean }` | no | `{ name: true }` | Toggle the optional reviewer-name input. |
 | `transport` | `"json" \| "discord"` | no | `"json"` | How the payload is delivered (raw JSON vs. Discord message). |

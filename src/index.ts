@@ -21,6 +21,7 @@ export interface Resolved {
   projectName: string;
   position: Position;
   accent: string;
+  theme: "auto" | "light" | "dark";
   branding: boolean;
   fieldName: boolean;
   transport: Transport;
@@ -52,6 +53,8 @@ export interface Overlay {
   layout(): void;
   captureOn(): void;
   captureOff(): void;
+  /** Create a pending pin outside comment mode (used by drawer follow-ups). */
+  addPin(docX: number, docY: number, anchor: Pin["anchor"]): Pin;
   removePin(p: Pin): void;
   showPins(): void;
   hidePins(): void;
@@ -69,7 +72,7 @@ export interface Drawer {
 }
 
 export interface Panel {
-  open(p: Pin): void;
+  open(p: Pin, prefill?: string): void;
   close(restoreFocus: boolean): void;
   isOpen(): boolean;
   destroy(): void;
@@ -98,6 +101,43 @@ export interface Runtime {
 
 let rt: Runtime | null = null;
 
+/* ---- theme (tk-light / tk-dark host class; "auto" tracks the OS live) ---- */
+
+let themeMq: MediaQueryList | null = null;
+let themeCb: ((e: MediaQueryListEvent) => void) | null = null;
+
+function setThemeClass(host: HTMLElement, dark: boolean): void {
+  host.classList.toggle("tk-dark", dark);
+  host.classList.toggle("tk-light", !dark);
+}
+
+function startTheme(host: HTMLElement, theme: Resolved["theme"]): void {
+  if (theme === "auto" && typeof window.matchMedia === "function") {
+    try {
+      themeMq = window.matchMedia("(prefers-color-scheme: dark)");
+      themeCb = (e: MediaQueryListEvent) => setThemeClass(host, e.matches);
+      themeMq.addEventListener("change", themeCb);
+      setThemeClass(host, themeMq.matches);
+      return;
+    } catch {
+      /* fall through to light */
+    }
+  }
+  setThemeClass(host, theme === "dark");
+}
+
+function stopTheme(): void {
+  if (themeMq && themeCb) {
+    try {
+      themeMq.removeEventListener("change", themeCb);
+    } catch {
+      /* ignore */
+    }
+  }
+  themeMq = null;
+  themeCb = null;
+}
+
 export function init(config: TyrekickConfig): void {
   if (rt) {
     console.warn("[Tyrekick] already initialised — call destroy() first.");
@@ -115,7 +155,8 @@ export function init(config: TyrekickConfig): void {
     appVersion: config.appVersion,
     projectName: config.projectName || document.title || "Prototype",
     position: config.position === "bottom-left" ? "bottom-left" : "bottom-right",
-    accent: config.accent || "#4f46e5",
+    accent: config.accent || "#FFC53D",
+    theme: config.theme === "light" || config.theme === "dark" ? config.theme : "auto",
     branding: config.branding !== false,
     fieldName: !config.fields || config.fields.name !== false,
     transport: config.transport === "discord" ? "discord" : "json",
@@ -130,6 +171,7 @@ export function init(config: TyrekickConfig): void {
   const style = document.createElement("style");
   style.textContent = styles(cfg.accent);
   root.appendChild(style);
+  startTheme(host, cfg.theme);
 
   rt = {
     cfg,
@@ -163,6 +205,7 @@ export function init(config: TyrekickConfig): void {
 
 export function destroy(): void {
   if (!rt) return;
+  stopTheme();
   try {
     stopErrors();
   } catch {

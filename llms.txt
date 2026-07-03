@@ -7,7 +7,8 @@
 > agents pull feedback back over MCP (list_feedback / get_feedback /
 > resolve_feedback / feedback_stats) and fix what was flagged.
 
-Install for a project: see AGENTS.md (step-by-step for coding agents).
+Install for a project: `npx tyrekick init --webhook <url> --yes` (injects the script
+tag, sends a test comment, prints the MCP command). Details in AGENTS.md.
 
 ## Docs
 
@@ -19,6 +20,7 @@ Install for a project: see AGENTS.md (step-by-step for coding agents).
 
 ## Key facts
 
+- One-command install: npx tyrekick init --webhook <url> --yes (non-interactive; auto-detects the HTML entry file)
 - Script tag: <script src=".../dist/tyrekick.js" data-webhook="..." data-app-version="..."></script> (auto-init)
 - ESM: npm install tyrekick; import { init } from "tyrekick"
 - Payload schema: 2. Never capture input values. Reviewers never log in.
