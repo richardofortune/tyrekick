@@ -1,0 +1,25 @@
+# Tyrekick
+
+> Feedback loop for AI-built web prototypes. A ~8 KB dependency-free script adds a
+> "Give feedback" button; reviewers pin comments on the live page (no accounts);
+> structured JSON (element + visible text + heading + route + page errors) POSTs to
+> a webhook the owner controls (Discord or their own Cloudflare Worker); coding
+> agents pull feedback back over MCP (list_feedback / get_feedback /
+> resolve_feedback / feedback_stats) and fix what was flagged.
+
+Install for a project: see AGENTS.md (step-by-step for coding agents).
+
+## Docs
+
+- [AGENTS.md](AGENTS.md): exact install + feedback-loop steps for coding agents
+- [README.md](README.md): human overview, config table, payload schema v2
+- [destinations/discord/README.md](destinations/discord/README.md): zero-code Discord destination
+- [destinations/cloudflare/README.md](destinations/cloudflare/README.md): TypeScript worker destination + REST API (GET/PATCH /feedback, Bearer TYREKICK_TOKEN)
+- [mcp/README.md](mcp/README.md): MCP server (npx tyrekick-mcp), tools, claude mcp add command
+
+## Key facts
+
+- Script tag: <script src=".../dist/tyrekick.js" data-webhook="..." data-app-version="..."></script> (auto-init)
+- ESM: npm install tyrekick; import { init } from "tyrekick"
+- Payload schema: 2. Never capture input values. Reviewers never log in.
+- MCP: npx tyrekick-mcp with env TYREKICK_URL + TYREKICK_TOKEN

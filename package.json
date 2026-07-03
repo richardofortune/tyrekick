@@ -1,0 +1,41 @@
+{
+  "name": "tyrekick",
+  "version": "0.1.0",
+  "description": "Open-source, zero-backend comment overlay for web prototypes. Feedback goes straight to a destination you own.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Richard, Frontier Operations Limited",
+  "homepage": "https://frontierops.dev",
+  "main": "dist/tyrekick.esm.js",
+  "module": "dist/tyrekick.esm.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/tyrekick.esm.js",
+      "default": "./dist/tyrekick.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "e2e": "playwright test",
+    "size": "node build.mjs && node -e \"import('node:zlib').then(z=>import('node:fs').then(f=>{const b=f.readFileSync('dist/tyrekick.js');const g=z.gzipSync(b).length;console.log('tyrekick.js gzipped:',g,'bytes ('+(g/1024).toFixed(1)+' KB)');if(g>30720){console.error('FAIL: exceeds 30720 byte budget');process.exit(1)}console.log('OK: within 30 KB budget')}))\""
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "esbuild": "^0.24.0",
+    "jsdom": "^25.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0",
+    "wrangler": "^4.107.0"
+  }
+}

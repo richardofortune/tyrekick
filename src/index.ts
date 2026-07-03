@@ -1,0 +1,304 @@
+/**
+ * Public API + shared runtime. ESM entry (NO auto-init).
+ *
+ *   import { init, destroy } from "tyrekick";
+ *
+ * Everything the widget renders lives inside ONE shadow root on a single host
+ * element appended to <body>. We never mutate host-page DOM or styles.
+ */
+import type { TyrekickConfig, FeedbackPayload, Position, Transport } from "./types";
+import { styles } from "./ui/styles";
+import { createTrigger } from "./ui/trigger";
+import { createOverlay } from "./ui/overlay";
+import { createPanel } from "./ui/panel";
+import { createDrawer } from "./ui/drawer";
+import { uuid } from "./capture/context";
+import { startErrors, stopErrors } from "./capture/errors";
+
+export interface Resolved {
+  webhook: string;
+  appVersion: string;
+  projectName: string;
+  position: Position;
+  accent: string;
+  branding: boolean;
+  fieldName: boolean;
+  transport: Transport;
+  persist: boolean;
+  captureErrors: boolean;
+}
+
+export interface Pin {
+  n: number;
+  /** document-space coordinates (survive scroll) */
+  docX: number;
+  docY: number;
+  /** viewport coordinates at creation (used to place the composer) */
+  clientX: number;
+  clientY: number;
+  status: "pending" | "sent" | "failed";
+  anchor: FeedbackPayload["anchor"];
+  /** comment text as submitted (empty while pending) */
+  body: string;
+  reviewer: string | null;
+  /** ISO timestamp of submission ("" while pending) */
+  at: string;
+  el: HTMLElement | null;
+}
+
+export interface Overlay {
+  enter(): void;
+  exit(): void;
+  layout(): void;
+  captureOn(): void;
+  captureOff(): void;
+  removePin(p: Pin): void;
+  showPins(): void;
+  hidePins(): void;
+  isActive(): boolean;
+  focus(): void;
+  destroy(): void;
+}
+
+export interface Drawer {
+  open(): void;
+  close(): void;
+  isOpen(): boolean;
+  refresh(): void;
+  destroy(): void;
+}
+
+export interface Panel {
+  open(p: Pin): void;
+  close(restoreFocus: boolean): void;
+  isOpen(): boolean;
+  destroy(): void;
+}
+
+export interface Draft {
+  body: string;
+  name: string;
+}
+
+export interface Runtime {
+  cfg: Resolved;
+  root: ShadowRoot;
+  host: HTMLElement;
+  sessionId: string;
+  pins: Pin[];
+  overlay: Overlay;
+  panel: Panel;
+  drawer: Drawer;
+  trigger: HTMLButtonElement;
+  pendingDraft: Draft | null;
+  savePins(): void;
+  saveDraft(d: Draft): void;
+  clearDraft(): void;
+}
+
+let rt: Runtime | null = null;
+
+export function init(config: TyrekickConfig): void {
+  if (rt) {
+    console.warn("[Tyrekick] already initialised — call destroy() first.");
+    return;
+  }
+  if (!config || !config.webhook) {
+    throw new Error("[Tyrekick] init: `webhook` is required.");
+  }
+  if (!config.appVersion) {
+    throw new Error("[Tyrekick] init: `appVersion` is required.");
+  }
+
+  const cfg: Resolved = {
+    webhook: config.webhook,
+    appVersion: config.appVersion,
+    projectName: config.projectName || document.title || "Prototype",
+    position: config.position === "bottom-left" ? "bottom-left" : "bottom-right",
+    accent: config.accent || "#4f46e5",
+    branding: config.branding !== false,
+    fieldName: !config.fields || config.fields.name !== false,
+    transport: config.transport === "discord" ? "discord" : "json",
+    persist: config.persist !== false,
+    captureErrors: config.captureErrors !== false,
+  };
+
+  const host = document.createElement("div");
+  host.setAttribute("data-tyrekick", "");
+  host.style.cssText = "position:absolute;top:0;left:0;width:0;height:0";
+  const root = host.attachShadow({ mode: "open" });
+  const style = document.createElement("style");
+  style.textContent = styles(cfg.accent);
+  root.appendChild(style);
+
+  rt = {
+    cfg,
+    root,
+    host,
+    sessionId: uuid(),
+    pins: [],
+    overlay: null as unknown as Overlay,
+    panel: null as unknown as Panel,
+    drawer: null as unknown as Drawer,
+    trigger: null as unknown as HTMLButtonElement,
+    pendingDraft: null,
+    savePins,
+    saveDraft,
+    clearDraft,
+  };
+
+  rt.overlay = createOverlay(rt);
+  rt.panel = createPanel(rt);
+  rt.trigger = createTrigger(rt);
+  root.appendChild(rt.trigger);
+  rt.drawer = createDrawer(rt);
+
+  (document.body || document.documentElement).appendChild(host);
+
+  startErrors(cfg.captureErrors);
+
+  if (cfg.persist) restore();
+  rt.drawer.refresh();
+}
+
+export function destroy(): void {
+  if (!rt) return;
+  try {
+    stopErrors();
+  } catch {
+    /* ignore */
+  }
+  try {
+    rt.drawer.destroy();
+  } catch {
+    /* ignore */
+  }
+  try {
+    rt.panel.destroy();
+  } catch {
+    /* ignore */
+  }
+  try {
+    rt.overlay.destroy();
+  } catch {
+    /* ignore */
+  }
+  try {
+    rt.host.remove();
+  } catch {
+    /* ignore */
+  }
+  rt = null;
+}
+
+/* ---- session persistence (localStorage, gated by cfg.persist) ---- */
+
+function pinsKey(): string {
+  return "tyrekick:pins:" + location.pathname;
+}
+function draftKey(): string {
+  return "tyrekick:draft:" + location.pathname;
+}
+
+function savePins(): void {
+  if (!rt || !rt.cfg.persist) return;
+  try {
+    const data = rt.pins
+      .filter((p) => p.status !== "pending")
+      .map((p) => ({
+        n: p.n,
+        x: p.docX,
+        y: p.docY,
+        s: p.status,
+        a: p.anchor,
+        b: p.body,
+        r: p.reviewer,
+        t: p.at,
+      }));
+    localStorage.setItem(pinsKey(), JSON.stringify(data));
+  } catch {
+    /* storage unavailable/full — non-fatal */
+  }
+}
+
+function saveDraft(d: Draft): void {
+  if (!rt) return;
+  rt.pendingDraft = d;
+  if (!rt.cfg.persist) return;
+  try {
+    localStorage.setItem(draftKey(), JSON.stringify(d));
+  } catch {
+    /* ignore */
+  }
+}
+
+function clearDraft(): void {
+  if (!rt) return;
+  rt.pendingDraft = null;
+  if (!rt.cfg.persist) return;
+  try {
+    localStorage.removeItem(draftKey());
+  } catch {
+    /* ignore */
+  }
+}
+
+function restore(): void {
+  if (!rt) return;
+  try {
+    const raw = localStorage.getItem(pinsKey());
+    if (raw) {
+      const arr = JSON.parse(raw) as Array<{
+        n: number;
+        x: number;
+        y: number;
+        s: Pin["status"];
+        a: Pin["anchor"];
+        b?: string;
+        r?: string | null;
+        t?: string;
+      }>;
+      if (Array.isArray(arr)) {
+        for (const d of arr) {
+          rt.pins.push({
+            n: d.n,
+            docX: d.x,
+            docY: d.y,
+            clientX: 0,
+            clientY: 0,
+            status: d.s === "sent" ? "sent" : "failed",
+            anchor: upgradeAnchor(d.a),
+            body: typeof d.b === "string" ? d.b : "",
+            reviewer: typeof d.r === "string" ? d.r : null,
+            at: typeof d.t === "string" ? d.t : "",
+            el: null,
+          });
+        }
+      }
+    }
+  } catch {
+    /* ignore corrupt data */
+  }
+  try {
+    const raw = localStorage.getItem(draftKey());
+    if (raw) rt.pendingDraft = JSON.parse(raw) as Draft;
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Pins persisted by a schema-v1 build lack anchor.element / anchor.context.
+ * Backfill them so payload construction never breaks after an upgrade.
+ */
+function upgradeAnchor(a: Pin["anchor"] | undefined): Pin["anchor"] {
+  const p = (a || {}) as Partial<Pin["anchor"]>;
+  return {
+    x_pct: typeof p.x_pct === "number" ? p.x_pct : 0,
+    y_pct: typeof p.y_pct === "number" ? p.y_pct : 0,
+    selector: typeof p.selector === "string" ? p.selector : null,
+    viewport: p.viewport || { w: 0, h: 0 },
+    element: p.element || null,
+    context: p.context || { heading: null, landmark: null },
+  };
+}
