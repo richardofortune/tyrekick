@@ -89,6 +89,25 @@ export async function getFeedbackTool(
   }
 }
 
+export async function triageFeedbackTool(
+  client: TyrekickClient,
+  args: { id: string; status: "approved" | "declined"; note?: string },
+): Promise<ToolResult> {
+  try {
+    const record = await client.setStatus(args.id, args.status, args.note);
+    const lines = [
+      `Feedback ${record.id} → ${record.status ?? args.status}.`,
+    ];
+    if (record.resolution_note) lines.push(`  note: ${record.resolution_note}`);
+    if (args.status === "approved") {
+      lines.push("  Ready to action (shared-review mode: agents act on approved items only).");
+    }
+    return ok(lines.join("\n"));
+  } catch (e) {
+    return err(e);
+  }
+}
+
 export async function resolveFeedbackTool(
   client: TyrekickClient,
   args: { id: string; note?: string },
@@ -133,12 +152,16 @@ function formatCounts(counts: Record<string, number>): string {
   return entries.map(([k, n]) => `  ${k}: ${n}`).join("\n");
 }
 
-export async function feedbackStatsTool(client: TyrekickClient): Promise<ToolResult> {
+export async function feedbackStatsTool(
+  client: TyrekickClient,
+  args: { project?: string } = {},
+): Promise<ToolResult> {
   try {
-    const records = await client.listFeedback({ limit: 200 });
+    const records = await client.listFeedback({ limit: 200, project: args.project });
     const stats = aggregateStats(records);
+    const scope = args.project ? ` for project "${args.project}"` : "";
     const text = [
-      `Feedback stats (${stats.total} item(s), most recent 200 max):`,
+      `Feedback stats${scope} (${stats.total} item(s), most recent 200 max):`,
       "",
       "By status:",
       formatCounts(stats.byStatus),

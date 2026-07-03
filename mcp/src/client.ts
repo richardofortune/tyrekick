@@ -66,9 +66,13 @@ export interface FeedbackRecord {
   [key: string]: unknown;
 }
 
+export type FeedbackStatus = "open" | "approved" | "declined" | "resolved";
+
 export interface ListFeedbackParams {
-  status?: "open" | "resolved";
+  status?: FeedbackStatus;
   route?: string;
+  /** Exact project_name match — scopes one shared worker to a single project. */
+  project?: string;
   since?: string;
   limit?: number;
 }
@@ -186,6 +190,7 @@ export class TyrekickClient {
     const qs = new URLSearchParams();
     if (params.status) qs.set("status", params.status);
     if (params.route) qs.set("route", params.route);
+    if (params.project) qs.set("project", params.project);
     if (params.since) qs.set("since", params.since);
     if (params.limit !== undefined) qs.set("limit", String(params.limit));
     const query = qs.toString();
@@ -202,8 +207,9 @@ export class TyrekickClient {
     return record;
   }
 
-  async resolveFeedback(id: string, note?: string): Promise<FeedbackRecord> {
-    const body: { status: "resolved"; note?: string } = { status: "resolved" };
+  /** Move a record along the triage ladder: open → approved/declined → resolved. */
+  async setStatus(id: string, status: FeedbackStatus, note?: string): Promise<FeedbackRecord> {
+    const body: { status: FeedbackStatus; note?: string } = { status };
     if (note !== undefined) body.note = note;
     const json = await this.request(`/feedback/${encodeURIComponent(id)}`, {
       method: "PATCH",
@@ -214,5 +220,9 @@ export class TyrekickClient {
       throw new TyrekickApiError(`Feedback ${id}: worker response did not contain a record`);
     }
     return record;
+  }
+
+  async resolveFeedback(id: string, note?: string): Promise<FeedbackRecord> {
+    return this.setStatus(id, "resolved", note);
   }
 }

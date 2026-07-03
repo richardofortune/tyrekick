@@ -18,6 +18,7 @@ import {
   feedbackStatsTool,
   getFeedbackTool,
   listFeedbackTool,
+  triageFeedbackTool,
   resolveFeedbackTool,
 } from "./tools.js";
 
@@ -43,13 +44,17 @@ server.registerTool(
     description:
       "List reviewer feedback collected by the Tyrekick worker, newest first. " +
       "Each item is summarised (id, created_at, status, route, body, reviewer, " +
-      "CSS selector, app_version). Filter by status, route, or an ISO `since` timestamp.",
+      "CSS selector, app_version). Filter by status, route, project, or an ISO `since` timestamp.",
     inputSchema: {
       status: z
-        .enum(["open", "resolved"])
+        .enum(["open", "approved", "declined", "resolved"])
         .optional()
-        .describe("Only return feedback with this status"),
+        .describe("Only return feedback with this status (open = untriaged)"),
       route: z.string().optional().describe("Only return feedback left on this route"),
+      project: z
+        .string()
+        .optional()
+        .describe("Only return feedback for this project_name (one worker can serve many projects)"),
       since: z
         .string()
         .optional()
@@ -81,6 +86,24 @@ server.registerTool(
 );
 
 server.registerTool(
+  "triage_feedback",
+  {
+    title: "Triage feedback",
+    description:
+      "Move an open feedback item through triage: approve it (cleared for an " +
+      "agent to action) or decline it (won't fix, with a reason). In shared-review " +
+      "mode — feedback from reviewers other than the project owner — agents must " +
+      "only action items with status approved.",
+    inputSchema: {
+      id: z.string().describe("Feedback record id"),
+      status: z.enum(["approved", "declined"]).describe("Triage decision"),
+      note: z.string().optional().describe("Why (recommended for declined)"),
+    },
+  },
+  async (args) => triageFeedbackTool(client, args),
+);
+
+server.registerTool(
   "resolve_feedback",
   {
     title: "Resolve feedback",
@@ -101,9 +124,14 @@ server.registerTool(
     description:
       "Aggregate counts of feedback by status, route, and app_version " +
       "(computed from the most recent 200 items).",
-    inputSchema: {},
+    inputSchema: {
+      project: z
+        .string()
+        .optional()
+        .describe("Scope the stats to one project_name"),
+    },
   },
-  async () => feedbackStatsTool(client),
+  async (args) => feedbackStatsTool(client, args),
 );
 
 async function main(): Promise<void> {

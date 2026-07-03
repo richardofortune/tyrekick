@@ -3,6 +3,7 @@ import { TyrekickClient } from "../src/client.js";
 import {
   aggregateStats,
   feedbackStatsTool,
+  triageFeedbackTool,
   getFeedbackTool,
   listFeedbackTool,
   resolveFeedbackTool,
@@ -262,5 +263,54 @@ describe("feedback_stats tool", () => {
     const result = await feedbackStatsTool(client);
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toMatch(/boom/);
+  });
+
+  it("triage: PATCHes approved with the right body and flags readiness", async () => {
+    const rec = makeRecord({ status: "approved", resolution_note: null });
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ ok: true, item: rec }));
+    const client = makeClient(fetchMock);
+    const result = await triageFeedbackTool(client, { id: rec.id, status: "approved" });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toContain(`/feedback/${rec.id}`);
+    expect((init as RequestInit).method).toBe("PATCH");
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ status: "approved" });
+    expect(result.isError).toBeUndefined();
+    expect(result.content[0].text).toContain("approved");
+    expect(result.content[0].text).toContain("Ready to action");
+  });
+
+  it("triage: declined carries the reason note", async () => {
+    const rec = makeRecord({ status: "declined", resolution_note: "intentional design" });
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ ok: true, item: rec }));
+    const client = makeClient(fetchMock);
+    const result = await triageFeedbackTool(client, {
+      id: rec.id,
+      status: "declined",
+      note: "intentional design",
+    });
+    expect(JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string)).toEqual({
+      status: "declined",
+      note: "intentional design",
+    });
+    expect(result.content[0].text).toContain("declined");
+    expect(result.content[0].text).toContain("intentional design");
+    expect(result.content[0].text).not.toContain("Ready to action");
+  });
+
+  it("triage: errors surface as tool errors, never throw", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new Error("boom"));
+    const client = makeClient(fetchMock);
+    const result = await triageFeedbackTool(client, { id: "x", status: "approved" });
+    expect(result.isError).toBe(true);
+  });
+
+  it("passes the project scope to the worker and labels the output", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ ok: true, items: [makeRecord()] }));
+    const client = makeClient(fetchMock);
+    const text = (await feedbackStatsTool(client, { project: "myNewThing" })).content[0].text;
+    const parsed = new URL(fetchMock.mock.calls[0][0] as string);
+    expect(parsed.searchParams.get("project")).toBe("myNewThing");
+    expect(parsed.searchParams.get("limit")).toBe("200");
+    expect(text).toContain('for project "myNewThing"');
   });
 });

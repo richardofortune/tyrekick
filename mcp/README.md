@@ -10,10 +10,11 @@ that feedback to Claude Code (or any MCP client) as tools, so your agent can
 
 | Tool | What it does |
 | --- | --- |
-| `list_feedback` | List feedback (filter by `status`, `route`, `since`, `limit`), newest first, one readable summary per item |
+| `list_feedback` | List feedback (filter by `status`, `route`, `project`, `since`, `limit`), newest first, one readable summary per item |
 | `get_feedback` | Full record for one item — body, route, anchor (x/y %, CSS selector, viewport), reviewer, environment |
+| `triage_feedback` | Approve or decline an open item (shared-review mode: agents action `approved` items only) |
 | `resolve_feedback` | Mark an item resolved, optionally with a note about the fix |
-| `feedback_stats` | Counts by status, route, and app_version |
+| `feedback_stats` | Counts by status, route, and app_version (optionally scoped to one `project`) |
 
 ## Setup
 

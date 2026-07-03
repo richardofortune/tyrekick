@@ -27,6 +27,7 @@ describe("TyrekickClient.listFeedback", () => {
     const records = await client.listFeedback({
       status: "open",
       route: "/pricing",
+      project: "myNewThing",
       since: "2026-06-30T00:00:00Z",
       limit: 25,
     });
@@ -38,6 +39,7 @@ describe("TyrekickClient.listFeedback", () => {
     expect(parsed.pathname).toBe("/feedback");
     expect(parsed.searchParams.get("status")).toBe("open");
     expect(parsed.searchParams.get("route")).toBe("/pricing");
+    expect(parsed.searchParams.get("project")).toBe("myNewThing");
     expect(parsed.searchParams.get("since")).toBe("2026-06-30T00:00:00Z");
     expect(parsed.searchParams.get("limit")).toBe("25");
     expect((init as RequestInit).method).toBe("GET");
