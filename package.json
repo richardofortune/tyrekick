@@ -1,6 +1,6 @@
 {
   "name": "tyrekick",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Open-source, zero-backend comment overlay for web prototypes. Feedback goes straight to a destination you own.",
   "type": "module",
   "license": "MIT",
@@ -17,6 +17,7 @@
     }
   },
   "files": [
+    "bin",
     "dist",
     "src",
     "LICENSE",
@@ -54,5 +55,8 @@
     "mcp",
     "ai-agents",
     "prototype"
-  ]
+  ],
+  "bin": {
+    "tyrekick": "bin/cli.mjs"
+  }
 }

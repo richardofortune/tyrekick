@@ -21,8 +21,20 @@ MCP and act on it. Reviewers never need accounts.
    Remember the answer for this project (e.g. note it in the project's CLAUDE.md or
    equivalent).
 
-2. **Add the script tag** before `</body>` of the page/template (for SPAs: the root
-   HTML file; for frameworks: the document/layout template):
+2. **Run the installer** (preferred — does everything below in one command):
+
+   ```bash
+   npx tyrekick init --webhook THEIR_WEBHOOK_URL --yes
+   ```
+
+   It finds the HTML entry file, injects the script tag (transport auto-detected
+   from the URL, app version from the git SHA), sends a test comment, and prints
+   the MCP setup command. Idempotent. Use `--file <path>` if the HTML entry is
+   unusual, `--no-test` to skip the test comment.
+
+   **Manual alternative** — add the script tag before `</body>` of the
+   page/template (for SPAs: the root HTML file; for frameworks: the
+   document/layout template):
 
    ```html
    <!-- Discord destination -->

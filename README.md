@@ -22,6 +22,15 @@ Reviewers also get a comment drawer (a right-hand panel listing every pin with i
 
 The fastest path is a Discord channel you control.
 
+**One command** (from your project folder):
+
+```bash
+npx tyrekick init
+```
+
+It asks for your webhook URL, injects the script tag, and sends a test comment.
+Or by hand:
+
 1. In Discord, open **Server Settings → Integrations → Webhooks → New Webhook**, pick a channel, and **Copy Webhook URL**.
 2. Paste that URL into the snippet below and drop it before `</body>` on your prototype:
 
