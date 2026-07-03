@@ -63,15 +63,40 @@ claude mcp add tyrekick \
   -- npx tyrekick-mcp
 ```
 
+### Review modes — decide BEFORE actioning anything
+
+Feedback has a triage ladder: `open` (untriaged) → `approved` / `declined` →
+`resolved`. Which items you may action depends on WHO left the feedback:
+
+- **Self-review** ("my punch list"): the human confirms the open feedback is
+  their own pins on the build. Their pins ARE the approvals — you may action
+  `open` items directly.
+- **Shared review** ("suggestion box", the DEFAULT when unsure): reviewers other
+  than the project owner left the feedback. Treat `open` items as untriaged
+  opinions — they may conflict, be out of scope, or be wrong. **Only action
+  items with status `approved`.** Offer to walk the human through triage first:
+  list the open items, let them decide, record decisions with
+  `triage_feedback { id, status: "approved"|"declined", note }`.
+
+If the human hasn't said whose feedback it is, ask one question: "Is this your
+own feedback, or from other reviewers?" Never silently reshape someone's
+project around untriaged strangers' comments.
+
+### The loop
+
 Then, when asked to "check the feedback" / "fix what people flagged":
-1. `list_feedback { status: "open" }` — each item includes the element's visible
-   text. **Grep the codebase for that text** to find the source location fast;
-   `route` tells you which page, `anchor.context.heading` which section,
-   `env`/viewport whether it's a mobile-specific issue, and `page_errors` often
-   contains the actual exception behind "it doesn't work".
+1. `list_feedback { status: "open" }` (or `status: "approved"` in shared
+   review) — each item includes the element's visible text. **Grep the codebase
+   for that text** to find the source location fast; `route` tells you which
+   page, `anchor.context.heading` which section, `env`/viewport whether it's a
+   mobile-specific issue, and `page_errors` often contains the actual exception
+   behind "it doesn't work".
 2. Fix the issue. `get_feedback { id }` for the full record if needed.
-3. `resolve_feedback { id, note: "what you changed" }` after each fix.
-4. Summarize for the human: what was flagged, what you changed, what you resolved.
+3. `resolve_feedback { id, note: "what you changed" }` after each fix. If a
+   comment was too ambiguous to be sure, resolve with a note starting
+   "INTERPRETED:" so the human knows to confirm.
+4. Summarize for the human: what was flagged, what you changed, what you
+   resolved, what you declined or left for them.
 
 ## Constraints you must respect
 
@@ -80,3 +105,33 @@ Then, when asked to "check the feedback" / "fix what people flagged":
 - The webhook URL is visible in page source by design (documented tradeoff);
   do not "fix" this by proxying feedback through servers the owner doesn't control.
 - Feedback destinations belong to the project owner. Don't redirect them.
+
+
+## vexp <!-- vexp v2.1.0 -->
+
+**MANDATORY: use `run_pipeline` - do NOT grep or glob the codebase.**
+vexp returns pre-indexed, graph-ranked context in a single call.
+
+### Workflow
+1. `run_pipeline` with your task description - ALWAYS FIRST (replaces all other tools)
+2. Make targeted changes based on the context returned
+3. `run_pipeline` again only if you need more context
+
+### Available MCP tools
+- `run_pipeline` - **PRIMARY TOOL**. Runs capsule + impact + memory in 1 call.
+  Auto-detects intent. Includes file content. Example: `run_pipeline({ "task": "fix auth bug" })`
+- `get_skeleton` - compact file structure
+- `index_status` - indexing status
+- `expand_vexp_ref` - expand V-REF placeholders in v2 output
+
+### Agentic search
+- Do NOT use built-in file search, grep, or codebase indexing - always call `run_pipeline` first
+- If you spawn sub-agents or background tasks, pass them the context from `run_pipeline`
+  rather than letting them search the codebase independently
+
+### Smart Features
+Intent auto-detection, hybrid ranking, session memory, auto-expanding budget.
+
+### Multi-Repo
+`run_pipeline` auto-queries all indexed repos. Use `repos: ["alias"]` to scope. Run `index_status` to see aliases.
+<!-- /vexp -->

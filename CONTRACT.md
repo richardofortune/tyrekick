@@ -151,6 +151,18 @@ and the fix-the-feedback workflow. The package is self-contained (own package.js
 tsconfig, build); runtime deps: @modelcontextprotocol/sdk (+ zod if the SDK needs it),
 nothing else.
 
+## Triage & review modes (addendum, 2026-07-03)
+Status ladder: `open` (untriaged) → `approved` | `declined` → `resolved`.
+- Worker PATCH accepts all four; resolved/declined set resolved_at (+ note);
+  approved keeps resolved_at null (note kept if given); open clears both.
+  List ?status= accepts all four.
+- MCP adds `triage_feedback { id, status: approved|declined, note? }`.
+- MODES are policy, not config (no reviewer auth exists): self-review = owner's
+  own pins, agents may action `open` directly; shared review (default when
+  unsure) = agents action `approved` only and offer conversational triage.
+  Policy lives in AGENTS.md; the widget is unchanged and reviewers never see
+  triage state.
+
 ## File ownership (do not touch files outside your lane)
 - Core library agent: `src/**` (index.ts, auto.ts, ui/*, capture/*, transport/*).
 - Destinations agent: `destinations/**`.
