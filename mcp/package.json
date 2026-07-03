@@ -1,7 +1,7 @@
 {
   "name": "tyrekick-mcp",
   "version": "0.1.0",
-  "description": "MCP server for Tyrekick — pull reviewer feedback from your Cloudflare Worker into Claude Code (or any MCP client) and resolve it as you fix things.",
+  "description": "MCP server for Tyrekick \u2014 pull reviewer feedback from your Cloudflare Worker into Claude Code (or any MCP client) and resolve it as you fix things.",
   "type": "module",
   "license": "MIT",
   "bin": {
@@ -16,7 +16,8 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json && chmod +x dist/server.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepublishOnly": "npm run build && npm test"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
@@ -26,5 +27,21 @@
     "@types/node": "^20.14.0",
     "typescript": "^5.5.4",
     "vitest": "^2.1.9"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/richardofortune/tyrekick.git",
+    "directory": "mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/richardofortune/tyrekick/issues"
+  },
+  "homepage": "https://github.com/richardofortune/tyrekick/tree/main/mcp",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "feedback",
+    "tyrekick",
+    "ai-agents"
+  ]
 }
