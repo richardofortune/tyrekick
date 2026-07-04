@@ -2,8 +2,9 @@
  * The composer: role="dialog", focus-trapped, anchored near the pin (flipping to
  * stay in the viewport). Textarea (required, max 2000, live counter), optional
  * name input, Submit/Cancel, spinner, success/failure states, copy-to-clipboard
- * on failure, and the branding footer. Esc cancels the composer; a second Esc
- * (handled by the overlay) leaves comment mode. Focus returns on close.
+ * on failure, and the branding footer. Esc dismisses the composer but KEEPS the
+ * typed draft (only Cancel discards it); a second Esc (handled by the overlay)
+ * leaves comment mode. Cmd/Ctrl+Enter submits. Focus returns on close.
  * While the composer is untouched, clicking elsewhere on the page abandons the
  * pending pin and re-pins at the new spot (see overlay.pick / abandonClean).
  */
@@ -29,6 +30,52 @@ export function chipLabel(anchor: Pin["anchor"]): string {
   if (el && el.label) return el.tag + ' "' + el.label + '"';
   if (anchor && anchor.selector) return anchor.selector;
   return anchor ? anchor.x_pct + "%, " + anchor.y_pct + "%" : "";
+}
+
+/** The root pin a reply belongs to, or null for top-level pins / gone roots. */
+export function replyRoot(rt: Runtime, pin: Pin): Pin | null {
+  if (pin.replyToId === null) return null;
+  return rt.pins.find((q) => q.replyToId === null && q.id === pin.replyToId) || null;
+}
+
+/**
+ * The body as delivered: replies carry the "Re #N:" linkage prefix in the
+ * payload (the transport has no thread schema of its own). Bodies that already
+ * start with a prefix — legacy restores, or a reviewer typing it — are kept.
+ */
+export function deliveredBody(rt: Runtime, pin: Pin, body: string): string {
+  const root = replyRoot(rt, pin);
+  if (!root || /^Re #\d+:/.test(body)) return body;
+  return "Re #" + root.n + ": " + body;
+}
+
+/**
+ * Payload for a pin's comment. Shared by the composer's submit and the
+ * drawer's retry-after-reload; `createdAt` preserves the original write time
+ * on retries.
+ */
+export function buildPayload(
+  rt: Runtime,
+  pin: Pin,
+  body: string,
+  name: string | null,
+  createdAt?: string,
+): FeedbackPayload {
+  return {
+    schema: 2,
+    id: uuid(),
+    created_at: createdAt || nowISO(),
+    project_name: rt.cfg.projectName,
+    app_version: rt.cfg.appVersion,
+    route: route(),
+    url: location.href,
+    body,
+    reviewer_name: rt.cfg.fieldName ? name || null : null,
+    session_id: rt.sessionId,
+    anchor: pin.anchor,
+    env: env(),
+    page_errors: getPageErrors(),
+  };
 }
 
 export function createPanel(rt: Runtime): Panel {
@@ -63,7 +110,14 @@ export function createPanel(rt: Runtime): Panel {
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
-      cancel();
+      // Esc is a habit key: abandon the pin but keep the typed draft.
+      // Only the explicit Cancel button discards text.
+      dismiss(true);
+      return;
+    }
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      void submit();
       return;
     }
     if (e.key !== "Tab") return;
@@ -105,13 +159,23 @@ export function createPanel(rt: Runtime): Panel {
     el.addEventListener("keydown", onKey);
 
     // Capture chip: the machine-voice line naming what the pin is anchored to.
+    // Replies show the thread linkage instead — the "Re #N:" prefix is added
+    // at send time, so the textarea stays clean and the link can't be broken
+    // by editing.
     if (currentPin) {
       const chip = document.createElement("div");
       chip.className = "chip";
-      const lbl = chipLabel(currentPin.anchor);
-      chip.textContent = "⌖ " + lbl;
+      const root = replyRoot(rt, currentPin);
+      if (root) {
+        chip.classList.add("reply");
+        chip.textContent = "↳ Replying to #" + root.n;
+        chip.setAttribute("aria-label", "Replying to comment " + root.n);
+      } else {
+        const lbl = chipLabel(currentPin.anchor);
+        chip.textContent = "⌖ " + lbl;
+        chip.setAttribute("aria-label", "Commenting on " + lbl);
+      }
       chip.setAttribute("aria-hidden", "false");
-      chip.setAttribute("aria-label", "Commenting on " + lbl);
       el.appendChild(chip);
     }
 
@@ -225,24 +289,6 @@ export function createPanel(rt: Runtime): Panel {
     }
   }
 
-  function buildPayload(pin: Pin, body: string, name: string): FeedbackPayload {
-    return {
-      schema: 2,
-      id: uuid(),
-      created_at: nowISO(),
-      project_name: rt.cfg.projectName,
-      app_version: rt.cfg.appVersion,
-      route: route(),
-      url: location.href,
-      body,
-      reviewer_name: rt.cfg.fieldName ? name || null : null,
-      session_id: rt.sessionId,
-      anchor: pin.anchor,
-      env: env(),
-      page_errors: getPageErrors(),
-    };
-  }
-
   function setSending(on: boolean): void {
     submitBtn.disabled = on || ta.value.trim().length === 0;
     submitBtn.innerHTML = on ? '<span class="spinner"></span>' : "Send";
@@ -251,9 +297,9 @@ export function createPanel(rt: Runtime): Panel {
   async function submit(): Promise<void> {
     if (sending || !currentPin) return;
     const pin = currentPin;
-    const body = ta.value.trim();
+    const typed = ta.value.trim();
     const name = nameIn ? nameIn.value.trim() : "";
-    if (!body) {
+    if (!typed) {
       ta.focus();
       return;
     }
@@ -262,7 +308,8 @@ export function createPanel(rt: Runtime): Panel {
     status.className = "status";
     status.textContent = "";
 
-    const payload = buildPayload(pin, body, name);
+    const body = deliveredBody(rt, pin, typed);
+    const payload = buildPayload(rt, pin, body, name);
     pin.body = body;
     pin.reviewer = rt.cfg.fieldName ? name || null : null;
     pin.at = payload.created_at;
@@ -293,7 +340,7 @@ export function createPanel(rt: Runtime): Panel {
     } else {
       pin.status = "failed";
       if (pin.el) pin.el.classList.add("failed");
-      rt.saveDraft({ body, name });
+      rt.saveDraft({ body: typed, name });
       rt.savePins();
       rt.drawer.refresh();
       showFailure(body);
@@ -342,10 +389,17 @@ export function createPanel(rt: Runtime): Panel {
     }
   }
 
+  /** Cancel button: abandon the pending pin AND discard the typed draft. */
   function cancel(): void {
     if (currentPin && currentPin.status === "pending") rt.overlay.removePin(currentPin);
     rt.clearDraft();
     close(true);
+  }
+
+  /** Esc / leaving comment mode: abandon the pending pin, keep the draft. */
+  function dismiss(restoreFocus: boolean): void {
+    if (currentPin && currentPin.status === "pending") rt.overlay.removePin(currentPin);
+    close(restoreFocus);
   }
 
   function abandonClean(): boolean {
@@ -385,5 +439,5 @@ export function createPanel(rt: Runtime): Panel {
     currentPin = null;
   }
 
-  return { open, close, isOpen, abandonClean, destroy };
+  return { open, close, isOpen, abandonClean, dismiss, destroy };
 }

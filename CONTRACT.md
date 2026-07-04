@@ -80,21 +80,32 @@ throw — null on any failure.
   (flips to stay in viewport). Touch events must work (mobile).
 - Composer: multiline textarea (required, max 2000 chars, live counter), optional name
   input (if fields.name), Submit + Cancel, branding footer. `role="dialog"`, focus
-  trap, focus returns to trigger on close. Esc/Cancel exits composer; Esc again exits
-  comment mode.
+  trap, focus returns to trigger on close. Cmd/Ctrl+Enter submits. Esc closes the
+  composer but KEEPS the typed draft (Cancel is the destructive path and clears it);
+  Esc again exits comment mode. Reply composers (drawer follow-ups) show a
+  "Replying to #N" chip instead of the anchor chip; the "Re #N:" linkage prefix is
+  added to the payload at send time, never shown as editable text.
 - Submit: inline spinner → success "✓ Sent — thank you" 1.5s then close, pin solid.
   Failure → retry → "Couldn't send. Copy your comment?" + Copy button, pin red.
 - Pins from THIS session stay visible in comment mode, numbered in submission order.
   With `persist:true`, restore unsent work only after reload: failed comments/pins
   plus any unsent draft text. Successfully submitted comments are not restored
-  from localStorage.
+  from localStorage. Pins re-attach to their anchor element (selector + stored
+  in-element click fraction) on restore and on window resize, so they follow the
+  content across viewport/layout changes; raw document coordinates are the
+  fallback when the selector no longer resolves.
 - Comment drawer: once ≥1 comment is submitted, a small "View comments" toggle (38px,
   count badge) appears above the trigger. It opens a right-hand drawer
   (`role="complementary"`, 320px, max 85vw) listing each comment: pin number badge
   (accent = sent, red = failed), text, reviewer/time/"not sent" meta. Clicking an
   entry smooth-scrolls the page to the pin and pulses it; pins are shown while the
-  drawer is open. Esc or Close dismisses it (focus returns to the toggle). Pins
+  drawer is open, and locating a pin the drawer itself would cover closes the
+  drawer first. Esc or Close dismisses it (focus returns to the toggle). Pins
   store `body`/`reviewer`/`at`; only failed comments persist with `persist:true`.
+  Failed entries carry Retry (resends with the original written-at timestamp) and
+  Discard actions — the unsent-work loop must be closable after a reload, not only
+  at the moment of failure. The toggle's count badge turns red while any comment
+  is unsent.
 - Branding footer: text "Built by Frontier Operations" linking
   `https://frontierops.dev` (target=_blank rel=noopener), small; hidden if
   `branding:false`.

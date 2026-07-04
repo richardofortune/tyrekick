@@ -67,6 +67,7 @@ button:focus-visible,textarea:focus-visible,input:focus-visible,a:focus-visible{
 .list-toggle{position:fixed;width:38px;height:38px;border-radius:50%;border:1px solid var(--tk-line);background:var(--tk-paper);color:var(--tk-ink);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 10px rgba(0,0,0,.25);z-index:calc(var(--tk-z) + 3)}
 .list-toggle svg{width:20px;height:20px;display:block}
 .list-toggle .count{position:absolute;top:-5px;right:-5px;min-width:17px;height:17px;line-height:17px;padding:0 4px;border-radius:5px;background:var(--tk-accent);color:var(--tk-accent-ink);font-family:var(--tk-mono);font-size:10px;font-weight:600;letter-spacing:-.01em;text-align:center}
+.list-toggle.failed .count{background:var(--tk-flag);color:#fff}
 .list-toggle.pos-bottom-right{right:25px;bottom:80px}
 .list-toggle.pos-bottom-left{left:25px;bottom:80px}
 .drawer{position:fixed;top:0;right:0;bottom:0;width:320px;max-width:85vw;background:var(--tk-paper);color:var(--tk-ink);border-left:1px solid var(--tk-line);box-shadow:-6px 0 26px rgba(0,0,0,.22);display:flex;flex-direction:column;font-size:13px;z-index:calc(var(--tk-z) + 3)}
@@ -84,7 +85,10 @@ button:focus-visible,textarea:focus-visible,input:focus-visible,a:focus-visible{
 .entry .body{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap;word-break:break-word}
 .entry .meta{display:block;margin-top:4px;font-family:var(--tk-mono);font-size:11px;letter-spacing:-.01em;color:var(--tk-ink);opacity:.65}
 .entry.failed .meta{color:var(--tk-flag);opacity:1}
-.followup{align-self:flex-end;margin-top:8px;padding:2px 8px;background:var(--tk-surface2);border:1px solid var(--tk-line);border-radius:5px;font-family:var(--tk-mono);font-size:11px;letter-spacing:-.01em;color:var(--tk-ink)}
+.entry-actions{display:flex;gap:6px;align-self:flex-end;margin-top:8px}
+.entry-actions button{padding:2px 8px;background:var(--tk-surface2);border:1px solid var(--tk-line);border-radius:5px;font-family:var(--tk-mono);font-size:11px;letter-spacing:-.01em;color:var(--tk-ink)}
+.entry-actions .retry{background:var(--tk-accent);color:var(--tk-accent-ink);border-color:transparent;font-weight:600}
+.entry-actions .retry:disabled{opacity:.6;cursor:default}
 @media (prefers-reduced-motion: no-preference){
 .spinner{animation:tk-spin .7s linear infinite}
 .pin.pulse{animation:tk-pulse 1s ease-out 2}

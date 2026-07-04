@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { routeWebhook, collectErrors, DEMO } from "./helpers";
 
 test.describe("follow-up flow", () => {
-  test("drawer Follow up opens a prefilled composer and creates a second comment", async ({
+  test("drawer Follow up opens a reply composer and creates a second comment", async ({
     page,
   }) => {
     const hook = await routeWebhook(page);
@@ -30,13 +30,15 @@ test.describe("follow-up flow", () => {
       .getByRole("button", { name: "Add follow-up to comment 1" })
       .click();
 
-    // Drawer closes; composer opens prefilled with the linkage prefix.
+    // Drawer closes; composer opens as a reply — clean textarea, linkage shown
+    // as a non-editable chip ("Re #N:" is added to the payload at send time).
     await expect(drawer).toBeHidden();
     await expect(dialog).toBeVisible();
-    await expect(dialog.locator("textarea")).toHaveValue("Re #1: ");
+    await expect(dialog.getByText("Replying to #1")).toBeVisible();
+    await expect(dialog.locator("textarea")).toHaveValue("");
 
     // Send the follow-up as a normal comment.
-    await dialog.locator("textarea").fill("Re #1: agreed, and the CTA too");
+    await dialog.locator("textarea").fill("agreed, and the CTA too");
     await dialog.getByRole("button", { name: /send|submit/i }).click();
     await expect(page.getByText(/sent — thank you/i)).toBeVisible();
     await expect(dialog).toBeHidden({ timeout: 5_000 });

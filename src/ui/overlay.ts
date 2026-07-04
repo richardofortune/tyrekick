@@ -112,15 +112,23 @@ export function createOverlay(rt: Runtime): Overlay {
     replyToId?: string | null,
   ): Pin {
     const parentId = typeof replyToId === "string" ? replyToId : null;
+    const clientX = docX - window.scrollX;
+    const clientY = docY - window.scrollY;
+    // The anchor rect is the element's client box captured this same instant,
+    // so the click's in-element fraction is exact; it lets the pin re-attach
+    // to the element after reload/resize.
+    const rect = parentId === null && anchor && anchor.element ? anchor.element.rect : null;
     const pin: Pin = {
       id: uuid(),
       n: rt.pins.filter((pp) => pp.replyToId === null).length + 1,
       docX,
       docY,
-      clientX: docX - window.scrollX,
-      clientY: docY - window.scrollY,
+      clientX,
+      clientY,
       status: "pending",
       replyToId: parentId,
+      fx: rect && rect.w > 0 ? Math.min(Math.max((clientX - rect.x) / rect.w, 0), 1) : null,
+      fy: rect && rect.h > 0 ? Math.min(Math.max((clientY - rect.y) / rect.h, 0), 1) : null,
       anchor,
       body: "",
       reviewer: null,
@@ -198,7 +206,9 @@ export function createOverlay(rt: Runtime): Overlay {
   function exit(): void {
     if (!active) return;
     active = false;
-    if (rt.panel.isOpen()) rt.panel.close(false);
+    // Dismiss (not close): abandons a still-pending pin so it can't linger as a
+    // hidden phantom, but keeps any typed draft for the next composer.
+    if (rt.panel.isOpen()) rt.panel.dismiss(false);
     if (capture) {
       capture.remove();
       capture = null;

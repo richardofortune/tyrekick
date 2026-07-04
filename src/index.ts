@@ -43,6 +43,13 @@ export interface Pin {
   status: "pending" | "sent" | "failed";
   /** Root pin id this comment replies to, or null for a top-level comment. */
   replyToId: string | null;
+  /**
+   * Click position as a fraction of the anchored element's box (0..1), or null
+   * when there is no element anchor. Lets pins re-attach to their element after
+   * reload/resize instead of trusting stale document coordinates.
+   */
+  fx: number | null;
+  fy: number | null;
   anchor: FeedbackPayload["anchor"];
   /** comment text as submitted (empty while pending) */
   body: string;
@@ -83,6 +90,8 @@ export interface Panel {
   isOpen(): boolean;
   /** If the composer is open but untouched, discard its pending pin and close; returns whether it did. */
   abandonClean(): boolean;
+  /** Close like Esc: abandon a pending pin but KEEP the saved draft text. */
+  dismiss(restoreFocus: boolean): void;
   destroy(): void;
 }
 
@@ -108,6 +117,33 @@ export interface Runtime {
 }
 
 let rt: Runtime | null = null;
+let resizeCb: (() => void) | null = null;
+let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Re-derive each root pin's document position from its anchored element's
+ * CURRENT box and the stored click fraction. Pins whose selector no longer
+ * resolves (or that predate fx/fy) keep their raw coordinates.
+ */
+function reprojectPins(): void {
+  if (!rt) return;
+  for (const p of rt.pins) {
+    if (p.replyToId !== null) continue; // replies have no page position of their own
+    if (p.fx === null || p.fy === null || !p.anchor || !p.anchor.selector) continue;
+    let el: Element | null = null;
+    try {
+      el = document.querySelector(p.anchor.selector);
+    } catch {
+      continue; // selector invalid in this DOM — keep stored coords
+    }
+    if (!el) continue;
+    const r = el.getBoundingClientRect();
+    if (!r.width && !r.height) continue; // display:none or detached layout
+    p.docX = window.scrollX + r.left + p.fx * r.width;
+    p.docY = window.scrollY + r.top + p.fy * r.height;
+  }
+  rt.overlay.layout();
+}
 
 /* ---- theme (tk-light / tk-dark host class; "auto" tracks the OS live) ---- */
 
@@ -209,11 +245,32 @@ export function init(config: TyrekickConfig): void {
 
   if (cfg.persist) restore();
   rt.drawer.refresh();
+
+  // Pins re-attach to their anchored element (selector + in-element fraction)
+  // so they survive viewport/layout changes; raw doc coords are the fallback.
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", reprojectPins, { once: true });
+  } else {
+    reprojectPins();
+  }
+  resizeCb = () => {
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(reprojectPins, 150);
+  };
+  window.addEventListener("resize", resizeCb);
 }
 
 export function destroy(): void {
   if (!rt) return;
   stopTheme();
+  if (resizeCb) {
+    window.removeEventListener("resize", resizeCb);
+    resizeCb = null;
+  }
+  if (resizeTimer) {
+    clearTimeout(resizeTimer);
+    resizeTimer = null;
+  }
   try {
     stopErrors();
   } catch {
@@ -268,6 +325,8 @@ function savePins(): void {
         r: p.reviewer,
         t: p.at,
         ri: p.replyToId,
+        ex: p.fx,
+        ey: p.fy,
       }));
     if (data.length) {
       localStorage.setItem(pinsKey(), JSON.stringify(data));
@@ -318,6 +377,8 @@ function restore(): void {
         t?: string;
         ri?: string | null;
         re?: number | null;
+        ex?: number | null;
+        ey?: number | null;
       }>;
       if (Array.isArray(arr)) {
         const idsByLegacyNumber = new Map<number, string>();
@@ -345,6 +406,8 @@ function restore(): void {
                 : legacyRootNumber !== null
                   ? (idsByLegacyNumber.get(legacyRootNumber) ?? null)
                   : null,
+            fx: typeof d.ex === "number" ? d.ex : null,
+            fy: typeof d.ey === "number" ? d.ey : null,
             anchor: upgradeAnchor(d.a),
             body,
             reviewer: typeof d.r === "string" ? d.r : null,

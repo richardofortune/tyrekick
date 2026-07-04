@@ -5,6 +5,8 @@
  * trigger once at least one comment exists. Lives entirely in the shadow root.
  */
 import type { Drawer, Pin, Runtime } from "../index";
+import { buildPayload } from "./panel";
+import { send } from "../transport/webhook";
 
 const LIST_ICON =
   '<svg viewBox="0 0 24 24" aria-hidden="true">' +
@@ -54,6 +56,18 @@ export function createDrawer(rt: Runtime): Drawer {
 
   function locate(p: Pin): void {
     const target = rootOf(p);
+    // If the pin would sit under the open drawer, close it so the pulse is
+    // actually visible; keep the pins on screen long enough to be found.
+    if (el) {
+      const dw = el.offsetWidth || 320;
+      if (target.docX - window.scrollX >= window.innerWidth - dw) {
+        close();
+        rt.overlay.showPins();
+        window.setTimeout(() => {
+          if (!isOpen() && !rt.overlay.isActive() && !rt.panel.isOpen()) rt.overlay.hidePins();
+        }, 2400);
+      }
+    }
     window.scrollTo({
       top: Math.max(0, target.docY - window.innerHeight / 2),
       behavior: "smooth",
@@ -64,6 +78,40 @@ export function createDrawer(rt: Runtime): Drawer {
       void target.el.offsetWidth;
       target.el.classList.add("pulse");
     }
+  }
+
+  /** Resend a failed comment (drawer path — used after a reload, when the
+   *  composer's own Retry is long gone). Original write time is preserved. */
+  async function retry(p: Pin, btn: HTMLButtonElement): Promise<void> {
+    if (btn.disabled) return;
+    btn.disabled = true;
+    btn.textContent = "Sending…";
+    let ok = false;
+    try {
+      const payload = buildPayload(rt, p, p.body, p.reviewer, p.at || undefined);
+      ok = (await send(rt.cfg.webhook, rt.cfg.transport, payload)).ok;
+    } catch {
+      ok = false;
+    }
+    if (p.status !== "failed") return; // discarded or re-sent elsewhere mid-flight
+    if (ok) {
+      p.status = "sent";
+      if (p.el) {
+        p.el.classList.remove("failed");
+        p.el.classList.add("sent");
+      }
+      rt.savePins();
+      refresh();
+    } else {
+      btn.disabled = false;
+      btn.textContent = "Retry";
+    }
+  }
+
+  /** Drop an unsent comment for good (it never reached the destination). */
+  function discard(p: Pin): void {
+    rt.overlay.removePin(p); // also renumbers and refreshes this drawer
+    rt.savePins();
   }
 
   /**
@@ -77,7 +125,9 @@ export function createDrawer(rt: Runtime): Drawer {
     const root = rootOf(p);
     locate(root);
     const np = rt.overlay.addPin(root.docX, root.docY, root.anchor, root.id);
-    rt.panel.open(np, "Re #" + root.n + ": ");
+    // No prefill: the composer shows a "Replying to #N" chip and submit adds
+    // the "Re #N:" prefix at send time.
+    rt.panel.open(np);
   }
 
   function renderList(): void {
@@ -154,14 +204,42 @@ export function createDrawer(rt: Runtime): Drawer {
     go.addEventListener("click", () => locate(p));
     entry.appendChild(go);
 
+    const actions = document.createElement("div");
+    actions.className = "entry-actions";
+
+    if (p.status === "failed") {
+      const rb = document.createElement("button");
+      rb.type = "button";
+      rb.className = "retry";
+      rb.textContent = "Retry";
+      rb.setAttribute(
+        "aria-label",
+        reply ? "Retry sending reply on comment " + threadNumber : "Retry sending comment " + threadNumber,
+      );
+      rb.addEventListener("click", () => void retry(p, rb));
+      actions.appendChild(rb);
+
+      const db = document.createElement("button");
+      db.type = "button";
+      db.className = "discard";
+      db.textContent = "Discard";
+      db.setAttribute(
+        "aria-label",
+        reply ? "Discard reply on comment " + threadNumber : "Discard comment " + threadNumber,
+      );
+      db.addEventListener("click", () => discard(p));
+      actions.appendChild(db);
+    }
+
     const fu = document.createElement("button");
     fu.type = "button";
     fu.className = "followup";
     fu.textContent = "Follow up";
     fu.setAttribute("aria-label", "Add follow-up to comment " + threadNumber);
     fu.addEventListener("click", () => followUp(p));
-    entry.appendChild(fu);
+    actions.appendChild(fu);
 
+    entry.appendChild(actions);
     return entry;
   }
 
@@ -213,9 +291,12 @@ export function createDrawer(rt: Runtime): Drawer {
   }
 
   function refresh(): void {
-    const n = submitted().length;
+    const pins = submitted();
+    const n = pins.length;
     count.textContent = String(n);
     toggle.classList.toggle("hidden", n === 0 && !el);
+    // Unsent comments need the reviewer's attention — flag the badge red.
+    toggle.classList.toggle("failed", pins.some((p) => p.status === "failed"));
     if (el) {
       const title = el.querySelector(".drawer-head span");
       if (title) title.textContent = "Comments (" + n + ")";
