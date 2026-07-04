@@ -75,6 +75,8 @@ export interface Panel {
   open(p: Pin, prefill?: string): void;
   close(restoreFocus: boolean): void;
   isOpen(): boolean;
+  /** If the composer is open but untouched, discard its pending pin and close; returns whether it did. */
+  abandonClean(): boolean;
   destroy(): void;
 }
 

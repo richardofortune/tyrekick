@@ -93,10 +93,11 @@ export function createOverlay(rt: Runtime): Overlay {
   }
 
   function pick(cx: number, cy: number): void {
-    if (rt.panel.isOpen()) return;
+    // A click while an untouched composer is open abandons that pin and
+    // re-pins here; a composer with content keeps the click (capture is off).
+    if (rt.panel.isOpen() && !rt.panel.abandonClean()) return;
     const anchor = computeAnchor(cx, cy, rt.host, capture);
     const pin = addPin(cx + window.scrollX, cy + window.scrollY, anchor);
-    captureOff();
     rt.panel.open(pin);
   }
 

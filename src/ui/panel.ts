@@ -4,6 +4,8 @@
  * name input, Submit/Cancel, spinner, success/failure states, copy-to-clipboard
  * on failure, and the branding footer. Esc cancels the composer; a second Esc
  * (handled by the overlay) leaves comment mode. Focus returns on close.
+ * While the composer is untouched, clicking elsewhere on the page abandons the
+ * pending pin and re-pins at the new spot (see overlay.pick / abandonClean).
  */
 import type { Panel, Pin, Runtime } from "../index";
 import { env, nowISO, route, uuid } from "../capture/context";
@@ -33,6 +35,9 @@ export function createPanel(rt: Runtime): Panel {
   let el: HTMLElement | null = null;
   let currentPin: Pin | null = null;
   let sending = false;
+  /** Whether the composer has content (typed, drafted, or prefilled). While
+   *  false the overlay's capture layer stays on so a click elsewhere re-pins. */
+  let touched = false;
   let successTimer: ReturnType<typeof setTimeout> | null = null;
 
   let ta!: HTMLTextAreaElement;
@@ -83,6 +88,10 @@ export function createPanel(rt: Runtime): Panel {
   }
 
   function onInput(): void {
+    if (!touched) {
+      touched = true;
+      rt.overlay.captureOff(); // composer has content — clicks belong to the page again
+    }
     updateCounter();
     rt.saveDraft({ body: ta.value, name: nameIn ? nameIn.value : "" });
   }
@@ -203,6 +212,8 @@ export function createPanel(rt: Runtime): Panel {
       if (nameIn) nameIn.value = rt.pendingDraft.name || "";
       updateCounter();
     }
+    touched = ta.value.trim().length > 0;
+    if (touched) rt.overlay.captureOff();
     ta.focus();
     const n = ta.value.length;
     if (n) {
@@ -337,6 +348,13 @@ export function createPanel(rt: Runtime): Panel {
     close(true);
   }
 
+  function abandonClean(): boolean {
+    if (!el || !currentPin || currentPin.status !== "pending" || touched) return false;
+    rt.overlay.removePin(currentPin);
+    close(false);
+    return true;
+  }
+
   function close(restoreFocus: boolean): void {
     if (successTimer) {
       clearTimeout(successTimer);
@@ -367,5 +385,5 @@ export function createPanel(rt: Runtime): Panel {
     currentPin = null;
   }
 
-  return { open, close, isOpen, destroy };
+  return { open, close, isOpen, abandonClean, destroy };
 }
