@@ -52,7 +52,7 @@ test.describe("comment drawer", () => {
     expect(errors).toEqual([]);
   });
 
-  test("drawer survives reload via persistence (text restored)", async ({ page }) => {
+  test("submitted comments do not survive reload via localStorage", async ({ page }) => {
     await routeWebhook(page);
     await page.goto(DEMO);
     await submitComment(page, 260, 360, "Persisted note about the hero");
@@ -61,9 +61,6 @@ test.describe("comment drawer", () => {
     await routeWebhook(page);
 
     const toggle = page.getByRole("button", { name: "View comments" });
-    await expect(toggle).toBeVisible();
-    await toggle.click();
-    const drawer = page.getByRole("complementary", { name: "Feedback comments" });
-    await expect(drawer.getByText("Persisted note about the hero")).toBeVisible();
+    await expect(toggle).toBeHidden();
   });
 });

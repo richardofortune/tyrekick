@@ -46,30 +46,38 @@ export function createDrawer(rt: Runtime): Drawer {
     }
   }
 
+  /** A reply's page presence is its root pin — resolve to it for scroll/pulse. */
+  function rootOf(p: Pin): Pin {
+    if (p.replyToId === null) return p;
+    return rt.pins.find((q) => q.replyToId === null && q.id === p.replyToId) || p;
+  }
+
   function locate(p: Pin): void {
+    const target = rootOf(p);
     window.scrollTo({
-      top: Math.max(0, p.docY - window.innerHeight / 2),
+      top: Math.max(0, target.docY - window.innerHeight / 2),
       behavior: "smooth",
     });
-    if (p.el) {
-      p.el.classList.remove("pulse");
+    if (target.el) {
+      target.el.classList.remove("pulse");
       // restart the animation if the same pin is clicked twice
-      void p.el.offsetWidth;
-      p.el.classList.add("pulse");
+      void target.el.offsetWidth;
+      target.el.classList.add("pulse");
     }
   }
 
   /**
-   * Sticky-note follow-up: close the drawer, bring the pin on screen, drop a
-   * NEW pending pin at the same spot (same anchor), and open the composer
-   * prefilled "Re #N: ". The prefix in the body is the only linkage — the
-   * payload stays a normal schema-v2 comment.
+   * Follow-up: close the drawer, bring the root pin on screen, and open the
+   * composer on a marker-less reply that carries the root's anchor. Following
+   * up on a reply joins the same thread. In the sent payload the "Re #N:"
+   * body prefix is the only linkage — it stays a normal schema-v2 comment.
    */
   function followUp(p: Pin): void {
     close();
-    locate(p);
-    const np = rt.overlay.addPin(p.docX, p.docY, p.anchor);
-    rt.panel.open(np, "Re #" + p.n + ": ");
+    const root = rootOf(p);
+    locate(root);
+    const np = rt.overlay.addPin(root.docX, root.docY, root.anchor, root.id);
+    rt.panel.open(np, "Re #" + root.n + ": ");
   }
 
   function renderList(): void {
@@ -83,50 +91,78 @@ export function createDrawer(rt: Runtime): Drawer {
       list.appendChild(empty);
       return;
     }
+    const kids = new Map<string, Pin[]>();
+    const roots: Pin[] = [];
     for (const p of pins) {
-      const entry = document.createElement("div");
-      entry.className = "entry" + (p.status === "failed" ? " failed" : "");
-
-      const go = document.createElement("button");
-      go.type = "button";
-      go.className = "entry-go";
-      go.setAttribute("aria-label", "Go to comment " + p.n);
-
-      const n = document.createElement("span");
-      n.className = "n";
-      n.textContent = String(p.n);
-      go.appendChild(n);
-
-      const main = document.createElement("span");
-      main.className = "entry-main";
-      const body = document.createElement("span");
-      body.className = "body";
-      body.textContent = p.body || "(no text)";
-      main.appendChild(body);
-      const meta = document.createElement("span");
-      meta.className = "meta";
-      const bits: string[] = [];
-      if (p.reviewer) bits.push(p.reviewer);
-      const t = fmtTime(p.at);
-      if (t) bits.push(t);
-      if (p.status === "failed") bits.push("not sent");
-      meta.textContent = bits.join(" · ");
-      main.appendChild(meta);
-      go.appendChild(main);
-
-      go.addEventListener("click", () => locate(p));
-      entry.appendChild(go);
-
-      const fu = document.createElement("button");
-      fu.type = "button";
-      fu.className = "followup";
-      fu.textContent = "Follow up";
-      fu.setAttribute("aria-label", "Add follow-up to comment " + p.n);
-      fu.addEventListener("click", () => followUp(p));
-      entry.appendChild(fu);
-
-      list.appendChild(entry);
+      if (
+        p.replyToId !== null &&
+        pins.some((q) => q.replyToId === null && q.id === p.replyToId)
+      ) {
+        const arr = kids.get(p.replyToId) || [];
+        arr.push(p);
+        kids.set(p.replyToId, arr);
+      } else {
+        roots.push(p); // top-level, or a reply whose root is gone
+      }
     }
+    for (const p of roots) {
+      list.appendChild(makeEntry(p, false));
+      for (const c of kids.get(p.id) || []) list.appendChild(makeEntry(c, true));
+    }
+  }
+
+  function makeEntry(p: Pin, reply: boolean): HTMLElement {
+    const thread = rootOf(p);
+    const threadNumber = thread.n || p.n;
+    const entry = document.createElement("div");
+    entry.className =
+      "entry" + (p.status === "failed" ? " failed" : "") + (reply ? " reply" : "");
+
+    const go = document.createElement("button");
+    go.type = "button";
+    go.className = "entry-go";
+    go.setAttribute(
+      "aria-label",
+      reply ? "Go to reply on comment " + threadNumber : "Go to comment " + threadNumber,
+    );
+
+    const n = document.createElement("span");
+    n.className = "n";
+    n.textContent = reply ? "↳" : String(p.n);
+    go.appendChild(n);
+
+    const main = document.createElement("span");
+    main.className = "entry-main";
+    const body = document.createElement("span");
+    body.className = "body";
+    // Nesting already shows the linkage — hide the "Re #N:" prefix (the sent
+    // payload keeps it).
+    const text = reply ? (p.body || "").replace(/^Re #\d+:\s*/, "") : p.body;
+    body.textContent = text || "(no text)";
+    main.appendChild(body);
+    const meta = document.createElement("span");
+    meta.className = "meta";
+    const bits: string[] = [];
+    if (p.reviewer) bits.push(p.reviewer);
+    const t = fmtTime(p.at);
+    if (t) bits.push(t);
+    if (p.status === "failed") bits.push("not sent");
+    meta.textContent = bits.join(" · ");
+    main.appendChild(meta);
+    go.appendChild(main);
+
+    go.addEventListener("click", () => locate(p));
+    entry.appendChild(go);
+
+    const fu = document.createElement("button");
+    fu.type = "button";
+    fu.className = "followup";
+    fu.textContent = "Follow up";
+    fu.setAttribute("aria-label", "Add follow-up to comment " + threadNumber);
+    fu.addEventListener("click", () => followUp(p));
+    entry.appendChild(fu);
+
+    return entry;
   }
 
   function open(): void {

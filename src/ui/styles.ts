@@ -76,6 +76,7 @@ button:focus-visible,textarea:focus-visible,input:focus-visible,a:focus-visible{
 .drawer-empty{padding:18px 10px;color:var(--tk-ink);opacity:.6;font-size:13px;text-align:center}
 .entry{display:flex;flex-direction:column;background:var(--tk-paper);border:1px solid var(--tk-line);border-radius:10px;padding:10px;margin-bottom:8px;color:var(--tk-ink)}
 .entry:hover{background:var(--tk-surface2)}
+.entry.reply{margin-left:22px}
 .entry-go{display:flex;gap:10px;width:100%;text-align:left;background:transparent;border:0;padding:0;font:inherit;font-size:13px;color:var(--tk-ink)}
 .entry .n{flex:none;width:22px;height:22px;border-radius:4px;background:var(--tk-accent);color:var(--tk-accent-ink);font-family:var(--tk-mono);font-size:11px;font-weight:600;letter-spacing:-.01em;display:flex;align-items:center;justify-content:center}
 .entry.failed .n{background:var(--tk-flag);color:#fff}

@@ -12,7 +12,7 @@
 
 The widget is a single ~8 KB script with zero dependencies, rendered in Shadow DOM so it can't fight your page. There is no Tyrekick backend, no accounts, and nothing phones home — feedback POSTs straight from the reviewer's browser to a destination **you** own. It exists for the moment an agent-built prototype needs more than one pair of eyes: instead of pasting screenshots into group chats and losing the replies, every comment arrives structured, versioned, and pinned to the exact spot.
 
-Reviewers also get a comment drawer (a right-hand panel listing every pin with its text — click one to jump back to that spot), draft recovery, and full keyboard/touch support. With `persist: true` (the default) pins survive reloads.
+Reviewers also get a comment drawer (a right-hand panel listing every pin with its text — click one to jump back to that spot), draft recovery, and full keyboard/touch support. With `persist: true` (the default), localStorage is only used to recover unsent work across reloads.
 
 > **Agents:** installing Tyrekick into a project? Read [`AGENTS.md`](AGENTS.md) — it has the exact steps.
 
@@ -128,7 +128,7 @@ Every field of `TyrekickConfig` (see [`src/types.ts`](src/types.ts)):
 | `branding` | `boolean` | no | `true` | Show the "Built by Frontier Operations" footer. |
 | `fields` | `{ name?: boolean }` | no | `{ name: true }` | Toggle the optional reviewer-name input. |
 | `transport` | `"json" \| "discord"` | no | `"json"` | How the payload is delivered (raw JSON vs. Discord message). |
-| `persist` | `boolean` | no | `true` | Use `localStorage` for draft recovery and to keep this session's pins across reloads. No storage keys are read/written when `false`. |
+| `persist` | `boolean` | no | `true` | Use `localStorage` only for unsent recovery: draft text and failed comments that still need retry after a reload. Submitted comments are not kept in localStorage. No storage keys are read/written when `false`. |
 | `captureErrors` | `boolean` | no | `true` | Record the page's uncaught errors / unhandled rejections (via `window` `"error"` and `"unhandledrejection"` listeners — the console is never patched) and attach the last ≤5 to each payload as `page_errors`. Set `data-capture-errors="false"` on the script tag for the auto-init build. Input **values** are never captured anywhere, regardless of this flag. |
 
 ## Payload schema (v2)

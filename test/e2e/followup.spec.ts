@@ -41,17 +41,26 @@ test.describe("follow-up flow", () => {
     await expect(page.getByText(/sent — thank you/i)).toBeVisible();
     await expect(dialog).toBeHidden({ timeout: 5_000 });
 
+    // The reply is marker-less: still exactly one pin on the page.
+    await expect(page.locator(".pin")).toHaveCount(1);
+
     // Two normal webhook deliveries; the prefix is the only linkage.
     expect(hook.count()).toBe(2);
     const last = hook.payloads.at(-1);
     const bodyText: string = last.body ?? last.content ?? "";
     expect(bodyText).toContain("Re #1: agreed, and the CTA too");
 
-    // Drawer now lists both comments.
+    // Drawer lists both, with the follow-up nested under its parent and the
+    // "Re #1:" linkage prefix hidden (nesting shows it; the payload keeps it).
     await toggle.click();
     await expect(drawer.getByText("Comments (2)")).toBeVisible();
     await expect(drawer.getByText("The hero copy is unclear")).toBeVisible();
-    await expect(drawer.getByText("Re #1: agreed, and the CTA too")).toBeVisible();
+    const reply = drawer.locator(".entry.reply");
+    await expect(reply).toHaveCount(1);
+    await expect(reply).toContainText("agreed, and the CTA too");
+    await expect(reply).not.toContainText("Re #1:");
+    const entries = drawer.locator(".entry");
+    await expect(entries.nth(1)).toHaveClass(/reply/); // rendered directly under parent
 
     expect(errors).toEqual([]);
   });

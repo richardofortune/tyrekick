@@ -30,6 +30,9 @@ export interface Resolved {
 }
 
 export interface Pin {
+  /** Stable identity for this comment/pin, regardless of UI reordering. */
+  id: string;
+  /** User-facing display number for top-level pins; replies derive from roots. */
   n: number;
   /** document-space coordinates (survive scroll) */
   docX: number;
@@ -38,6 +41,8 @@ export interface Pin {
   clientX: number;
   clientY: number;
   status: "pending" | "sent" | "failed";
+  /** Root pin id this comment replies to, or null for a top-level comment. */
+  replyToId: string | null;
   anchor: FeedbackPayload["anchor"];
   /** comment text as submitted (empty while pending) */
   body: string;
@@ -53,8 +58,9 @@ export interface Overlay {
   layout(): void;
   captureOn(): void;
   captureOff(): void;
-  /** Create a pending pin outside comment mode (used by drawer follow-ups). */
-  addPin(docX: number, docY: number, anchor: Pin["anchor"]): Pin;
+  /** Create a pending pin; pass `replyToId` (a root pin's stable id) for a
+   *  marker-less reply (used by drawer follow-ups). */
+  addPin(docX: number, docY: number, anchor: Pin["anchor"], replyToId?: string | null): Pin;
   removePin(p: Pin): void;
   showPins(): void;
   hidePins(): void;
@@ -249,8 +255,10 @@ function savePins(): void {
   if (!rt || !rt.cfg.persist) return;
   try {
     const data = rt.pins
-      .filter((p) => p.status !== "pending")
+      // localStorage is only for unsent work that may need recovery after a reload.
+      .filter((p) => p.status === "failed")
       .map((p) => ({
+        i: p.id,
         n: p.n,
         x: p.docX,
         y: p.docY,
@@ -259,8 +267,13 @@ function savePins(): void {
         b: p.body,
         r: p.reviewer,
         t: p.at,
+        ri: p.replyToId,
       }));
-    localStorage.setItem(pinsKey(), JSON.stringify(data));
+    if (data.length) {
+      localStorage.setItem(pinsKey(), JSON.stringify(data));
+    } else {
+      localStorage.removeItem(pinsKey());
+    }
   } catch {
     /* storage unavailable/full — non-fatal */
   }
@@ -294,6 +307,7 @@ function restore(): void {
     const raw = localStorage.getItem(pinsKey());
     if (raw) {
       const arr = JSON.parse(raw) as Array<{
+        i?: string;
         n: number;
         x: number;
         y: number;
@@ -302,23 +316,43 @@ function restore(): void {
         b?: string;
         r?: string | null;
         t?: string;
+        ri?: string | null;
+        re?: number | null;
       }>;
       if (Array.isArray(arr)) {
-        for (const d of arr) {
+        const idsByLegacyNumber = new Map<number, string>();
+        const restored = arr
+          .filter((d) => d && d.s === "failed")
+          .map((d) => {
+            const id = typeof d.i === "string" ? d.i : uuid();
+            idsByLegacyNumber.set(d.n, id);
+            return { d, id, body: typeof d.b === "string" ? d.b : "" };
+          });
+        for (const { d, id, body } of restored) {
+          const legacyRootNumber =
+            typeof d.re === "number" ? d.re : legacyReplyTo(body, d.n);
           rt.pins.push({
+            id,
             n: d.n,
             docX: d.x,
             docY: d.y,
             clientX: 0,
             clientY: 0,
-            status: d.s === "sent" ? "sent" : "failed",
+            status: "failed",
+            replyToId:
+              typeof d.ri === "string"
+                ? d.ri
+                : legacyRootNumber !== null
+                  ? (idsByLegacyNumber.get(legacyRootNumber) ?? null)
+                  : null,
             anchor: upgradeAnchor(d.a),
-            body: typeof d.b === "string" ? d.b : "",
+            body,
             reviewer: typeof d.r === "string" ? d.r : null,
             at: typeof d.t === "string" ? d.t : "",
             el: null,
           });
         }
+        normalizeRestoredPins(rt.pins);
       }
     }
   } catch {
@@ -329,6 +363,37 @@ function restore(): void {
     if (raw) rt.pendingDraft = JSON.parse(raw) as Draft;
   } catch {
     /* ignore */
+  }
+}
+
+/**
+ * Follow-ups saved by builds that predate Pin.replyToId were full pins whose
+ * only linkage was the "Re #N:" body prefix — recover it from there.
+ */
+function legacyReplyTo(body: string, n: number): number | null {
+  const m = /^Re #(\d+):/.exec(body);
+  const pn = m ? parseInt(m[1], 10) : NaN;
+  return Number.isInteger(pn) && pn < n ? pn : null;
+}
+
+function normalizeRestoredPins(pins: Pin[]): void {
+  let n = 0;
+  const roots = new Map<string, Pin>();
+  for (const p of pins) {
+    if (p.replyToId !== null) continue;
+    n += 1;
+    p.n = n;
+    roots.set(p.id, p);
+  }
+  for (const p of pins) {
+    if (p.replyToId === null) continue;
+    const root = roots.get(p.replyToId);
+    if (root) {
+      p.n = root.n;
+    } else {
+      n += 1;
+      p.n = n;
+    }
   }
 }
 

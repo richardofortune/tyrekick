@@ -16,7 +16,7 @@ backend, no accounts, nothing phones home.
 
 > Design change from the original spec: we NO LONGER target the Claude-artifact
 > sandbox. Builders host the prototype on a normal origin. Therefore:
-> - `localStorage` is ALLOWED (draft recovery + persistent session pins), gated by `persist`.
+> - `localStorage` is ALLOWED only for unsent recovery (drafts + failed comments awaiting retry), gated by `persist`.
 > - There is NO `fl.inline.js` build. Only `dist/tyrekick.js` (IIFE) and `dist/tyrekick.esm.js` (ESM).
 > - The Google Apps Script destination is REPLACED by Discord (default) + a
 >   TypeScript Cloudflare template.
@@ -85,14 +85,16 @@ throw — null on any failure.
 - Submit: inline spinner → success "✓ Sent — thank you" 1.5s then close, pin solid.
   Failure → retry → "Couldn't send. Copy your comment?" + Copy button, pin red.
 - Pins from THIS session stay visible in comment mode, numbered in submission order.
-  With `persist:true`, restore this session's pins + any unsent draft after reload.
+  With `persist:true`, restore unsent work only after reload: failed comments/pins
+  plus any unsent draft text. Successfully submitted comments are not restored
+  from localStorage.
 - Comment drawer: once ≥1 comment is submitted, a small "View comments" toggle (38px,
   count badge) appears above the trigger. It opens a right-hand drawer
   (`role="complementary"`, 320px, max 85vw) listing each comment: pin number badge
   (accent = sent, red = failed), text, reviewer/time/"not sent" meta. Clicking an
   entry smooth-scrolls the page to the pin and pulses it; pins are shown while the
   drawer is open. Esc or Close dismisses it (focus returns to the toggle). Pins
-  store `body`/`reviewer`/`at` and these persist with `persist:true`.
+  store `body`/`reviewer`/`at`; only failed comments persist with `persist:true`.
 - Branding footer: text "Built by Frontier Operations" linking
   `https://frontierops.dev` (target=_blank rel=noopener), small; hidden if
   `branding:false`.

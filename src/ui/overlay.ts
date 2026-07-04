@@ -5,6 +5,7 @@
  */
 import type { Overlay, Pin, Runtime } from "../index";
 import { computeAnchor } from "../capture/anchor";
+import { uuid } from "../capture/context";
 
 const HINT_TEXT = "Click anywhere to leave a comment — Esc to cancel";
 const HINT_TEXT_TOUCH = "Tap anywhere to leave a comment";
@@ -37,6 +38,34 @@ export function createOverlay(rt: Runtime): Overlay {
     root.appendChild(el);
   }
 
+  function syncPinBadge(p: Pin): void {
+    if (!p.el) return;
+    const s = p.el.querySelector("span");
+    if (s) s.textContent = String(p.n);
+  }
+
+  function renumberPins(): void {
+    let n = 0;
+    const roots = new Map<string, Pin>();
+    for (const p of rt.pins) {
+      if (p.replyToId !== null) continue;
+      n += 1;
+      p.n = n;
+      roots.set(p.id, p);
+      syncPinBadge(p);
+    }
+    for (const p of rt.pins) {
+      if (p.replyToId === null) continue;
+      const rootPin = roots.get(p.replyToId);
+      if (rootPin) {
+        p.n = rootPin.n;
+      } else {
+        n += 1;
+        p.n = n;
+      }
+    }
+  }
+
   function layout(): void {
     const sx = window.scrollX;
     const sy = window.scrollY;
@@ -49,6 +78,7 @@ export function createOverlay(rt: Runtime): Overlay {
 
   function showPins(): void {
     for (const p of rt.pins) {
+      if (p.replyToId !== null) continue; // replies have no page marker
       if (!p.el || !p.el.isConnected) makePinEl(p);
       p.el!.classList.remove("hidden");
     }
@@ -70,15 +100,27 @@ export function createOverlay(rt: Runtime): Overlay {
     exit();
   }
 
-  /** Create a pending pin at document coords; "drop" runs the lock-on animation. */
-  function addPin(docX: number, docY: number, anchor: Pin["anchor"]): Pin {
+  /**
+   * Create a pending pin at document coords; "drop" runs the lock-on animation.
+   * With `replyToId`, the pin is a marker-less reply linked to a root pin's
+   * number and never renders on the page.
+   */
+  function addPin(
+    docX: number,
+    docY: number,
+    anchor: Pin["anchor"],
+    replyToId?: string | null,
+  ): Pin {
+    const parentId = typeof replyToId === "string" ? replyToId : null;
     const pin: Pin = {
-      n: rt.pins.length + 1,
+      id: uuid(),
+      n: rt.pins.filter((pp) => pp.replyToId === null).length + 1,
       docX,
       docY,
       clientX: docX - window.scrollX,
       clientY: docY - window.scrollY,
       status: "pending",
+      replyToId: parentId,
       anchor,
       body: "",
       reviewer: null,
@@ -86,9 +128,13 @@ export function createOverlay(rt: Runtime): Overlay {
       el: null,
     };
     rt.pins.push(pin);
-    makePinEl(pin);
-    pin.el!.classList.add("drop");
-    layout();
+    renumberPins();
+    if (parentId === null) {
+      makePinEl(pin);
+      syncPinBadge(pin);
+      pin.el!.classList.add("drop");
+      layout();
+    }
     return pin;
   }
 
@@ -179,13 +225,7 @@ export function createOverlay(rt: Runtime): Overlay {
     const i = rt.pins.indexOf(p);
     if (i >= 0) rt.pins.splice(i, 1);
     if (p.el) p.el.remove();
-    rt.pins.forEach((pp, idx) => {
-      pp.n = idx + 1;
-      if (pp.el) {
-        const s = pp.el.querySelector("span");
-        if (s) s.textContent = String(pp.n);
-      }
-    });
+    renumberPins();
     if (rt.drawer) rt.drawer.refresh();
   }
 
