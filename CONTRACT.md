@@ -29,9 +29,11 @@ backend, no accounts, nothing phones home.
 - `destroy()` removes all DOM, listeners, and in-memory state.
 
 ## Config (see `src/types.ts` TyrekickConfig)
-webhook (req), appVersion (req), projectName (=document.title), position
-("bottom-right"), accent ("#4f46e5"), branding (true), fields ({name:true}),
-transport ("json" | "discord", default "json"), persist (true).
+webhook (req), appVersion (req), projectName (=document.title; installers must
+set a stable slug — see the identity addendum), position ("bottom-right"),
+accent ("#FFC53D", auto-contrast ink), theme ("auto" | "light" | "dark",
+default "auto"), branding (true), fields ({name:true}), transport ("json" |
+"discord", default "json"), persist (true), captureErrors (true).
 
 ## data-* auto-init (IIFE only, from the script's own tag)
 `data-webhook`, `data-app-version`, `data-project-name`, `data-transport`,
@@ -221,9 +223,14 @@ exchange is a learning corpus (cross-project patterns reported back to the
 builder). Resolution notes are written to be minable; this is the long-term
 steward-insights path and the reason resolved records keep their notes.
 
-## File ownership (do not touch files outside your lane)
-- Core library agent: `src/**` (index.ts, auto.ts, ui/*, capture/*, transport/*).
-- Destinations agent: `destinations/**`.
-- Demo + docs agent: `demo/**`, root `README.md`.
-- Tests agent: `test/**`, `playwright.config.ts`, `vitest.config.ts`.
-- DO NOT modify: `package.json`, `tsconfig.json`, `build.mjs`, `src/types.ts`, `LICENSE`.
+## File ownership (updated 2026-07-05)
+The original multi-agent lanes (core / destinations / demo / tests as separate
+agents) are retired — the project is maintained by one human + one agent and
+the lanes were being waived case-by-case anyway. What REMAINS binding:
+
+- `src/types.ts` is the canonical contract: never rename payload or config
+  fields without a schema bump, and never extend the payload without bumping
+  `schema`.
+- `LICENSE` is untouchable.
+- Changes to `package.json`, `build.mjs`, or `tsconfig.json` need the owner's
+  explicit sign-off in the conversation where they happen.
