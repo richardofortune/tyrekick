@@ -246,9 +246,67 @@ async function forwardToDiscord(webhook: string, record: FeedbackRecord): Promis
   });
 }
 
+/**
+ * Forward a resolution/decline to Discord so humans watching the channel see
+ * the loop CLOSE, not just open. Same best-effort posture as ingest forwarding.
+ */
+async function forwardResolutionToDiscord(webhook: string, record: FeedbackRecord): Promise<void> {
+  const mark = record.status === "resolved" ? "✅ resolved" : "⛔ declined";
+  const note = record.resolution_note ? ` — ${record.resolution_note}` : "";
+  let content =
+    `${mark}: **${record.project_name}** "${(record.body || "").slice(0, 120)}"${note}`;
+  if (content.length > 1900) content = content.slice(0, 1900) + "…";
+  await fetch(webhook, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content }),
+  });
+}
+
 /* ------------------------------------------------------------------------ */
 /* Route handlers                                                            */
 /* ------------------------------------------------------------------------ */
+
+/**
+ * GET /receipts?ids=<uuid>,<uuid> — UNAUTHENTICATED status lookups for the
+ * widget's closure loop ("your pin turned green").
+ *
+ * Security model: a payload id is an unguessable UUIDv4 known only to the
+ * browser that submitted the comment (and this store) — it acts as a
+ * capability. Exact-id lookups only, hard-capped batch, no listing, and the
+ * response carries nothing but status/when/note. Unknown ids are silently
+ * omitted rather than distinguished, so the route is not an existence oracle
+ * beyond what holding the id already implies.
+ */
+const RECEIPTS_MAX_IDS = 50;
+const UUID_SHAPE = /^[0-9a-f-]{16,64}$/i;
+
+async function handleReceipts(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const raw = url.searchParams.get("ids") || "";
+  const ids = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => UUID_SHAPE.test(s))
+    .slice(0, RECEIPTS_MAX_IDS);
+  if (ids.length === 0) return json({ ok: true, receipts: [] });
+
+  let records: Array<FeedbackRecord | null>;
+  try {
+    records = await Promise.all(ids.map((id) => loadRecord(env, id)));
+  } catch {
+    return json({ ok: false, error: "storage_failed" }, 500);
+  }
+  const receipts = records
+    .filter((r): r is FeedbackRecord => r !== null)
+    .map((r) => ({
+      id: r.id,
+      status: r.status,
+      resolved_at: r.resolved_at ?? null,
+      resolution_note: r.resolution_note ?? null,
+    }));
+  return json({ ok: true, receipts });
+}
 
 /** POST / and POST /feedback — open ingest of a widget FeedbackPayload. */
 async function handleIngest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -401,7 +459,12 @@ async function handleGetOne(env: Env, id: string): Promise<Response> {
 }
 
 /** PATCH /feedback/:id — token-gated resolve/reopen. Returns the updated record. */
-async function handlePatch(request: Request, env: Env, id: string): Promise<Response> {
+async function handlePatch(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+  id: string,
+): Promise<Response> {
   // Parse the PATCH body defensively.
   let body: { status?: unknown; note?: unknown };
   try {
@@ -450,6 +513,15 @@ async function handlePatch(request: Request, env: Env, id: string): Promise<Resp
     return json({ ok: false, error: "storage_failed" }, 500);
   }
 
+  // Mirror the closure to Discord (best-effort) — the humans who saw the
+  // comment arrive in the channel also see what happened to it.
+  if (
+    env.DISCORD_WEBHOOK &&
+    (record.status === "resolved" || record.status === "declined")
+  ) {
+    ctx.waitUntil(forwardResolutionToDiscord(env.DISCORD_WEBHOOK, record).catch(() => {}));
+  }
+
   return json({ ok: true, item: record });
 }
 
@@ -490,6 +562,12 @@ export default {
       return json({ ok: false, error: "method_not_allowed" }, 405);
     }
 
+    // /receipts — unauthenticated capability-id status lookups (widget closure).
+    if (path.endsWith("/receipts")) {
+      if (request.method === "GET") return handleReceipts(request, env);
+      return json({ ok: false, error: "method_not_allowed" }, 405);
+    }
+
     // /feedback/:id — GET one or PATCH (both token-gated).
     if (itemMarker !== -1) {
       const rawId = path.slice(itemMarker + "/feedback/".length);
@@ -507,7 +585,7 @@ export default {
         return requireAuth(request, env) ?? handleGetOne(env, id);
       }
       if (request.method === "PATCH") {
-        return requireAuth(request, env) ?? handlePatch(request, env, id);
+        return requireAuth(request, env) ?? handlePatch(request, env, ctx, id);
       }
       return json({ ok: false, error: "method_not_allowed" }, 405);
     }

@@ -16,7 +16,10 @@ backend, no accounts, nothing phones home.
 
 > Design change from the original spec: we NO LONGER target the Claude-artifact
 > sandbox. Builders host the prototype on a normal origin. Therefore:
-> - `localStorage` is ALLOWED only for unsent recovery (drafts + failed comments awaiting retry), gated by `persist`.
+> - `localStorage` is ALLOWED for unsent recovery (drafts + failed comments awaiting
+>   retry) and — worker transport only — delivered-comment receipts (so closure can
+>   reach the reviewer). Both gated by `persist`. Never a shadow database of sent
+>   content beyond the capped receipts window.
 > - There is NO `fl.inline.js` build. Only `dist/tyrekick.js` (IIFE) and `dist/tyrekick.esm.js` (ESM).
 > - The Google Apps Script destination is REPLACED by Discord (default) + a
 >   TypeScript Cloudflare template.
@@ -189,6 +192,31 @@ Status ladder: `open` (untriaged) → `approved` | `declined` → `resolved`.
   unsure) = agents action `approved` only and offer conversational triage.
   Policy lives in AGENTS.md; the widget is unchanged and reviewers never see
   triage state.
+
+## Receipts — closure reaches the reviewer (addendum, 2026-07-05)
+
+The loop's missing half: the reviewer who pinned a comment learns what
+happened to it. Worker transport only (Discord is write-only by design).
+
+- **Worker**: `GET /receipts?ids=<uuid>,…` is UNAUTHENTICATED. Payload ids are
+  unguessable UUIDv4 capabilities known only to the submitting browser and the
+  store; exact-id lookups only, batch hard-capped at 50, unknown ids silently
+  omitted (no existence oracle), response carries only
+  `{id, status, resolved_at, resolution_note}`. PATCH additionally mirrors
+  resolved/declined transitions to `DISCORD_WEBHOOK` when set (best-effort,
+  waitUntil, failures swallowed).
+- **Widget**: on successful delivery, `Pin.deliveredId` = the payload id and a
+  receipt record persists to `tyrekick:receipts:<pathname>` (persist-gated,
+  `transport:"json"` only; ≤50 records, ≤14 days, pruned on save). On restore,
+  receipts return as SENT pins (numbered with everything else, re-anchored like
+  everything else). The widget polls /receipts for RESTORED ids on init and on
+  drawer open, throttled to ≥60s, silent on every failure — a destination
+  without the route simply never turns pins green, no console noise ever.
+- **UI**: resolved → green badge (pin, drawer, popover) with the resolution
+  note shown in the entry and appended to the hover tooltip; declined → neutral
+  badge with its note. Closed root entries gain "Got it", which retires the
+  whole thread (root + replies) from page and storage. Failed→retry success
+  graduates a comment from the unsent store to the receipts store.
 
 ## Operating patterns & project identity (addendum, 2026-07-05)
 

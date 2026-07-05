@@ -52,15 +52,31 @@ test.describe("comment drawer", () => {
     expect(errors).toEqual([]);
   });
 
-  test("submitted comments do not survive reload via localStorage", async ({ page }) => {
+  test("delivered comments come back as receipts after reload (worker transport)", async ({
+    page,
+  }) => {
     await routeWebhook(page);
     await page.goto(DEMO);
     await submitComment(page, 260, 360, "Persisted note about the hero");
 
     await page.reload();
-    await routeWebhook(page);
 
+    // The delivered comment returns as a sent pin awaiting its outcome —
+    // no "not sent" (it was delivered), no unsent-work storage involved.
     const toggle = page.getByRole("button", { name: "View comments" });
-    await expect(toggle).toBeHidden();
+    await expect(toggle).toBeVisible();
+    await expect(toggle).not.toHaveClass(/failed/);
+    await toggle.click();
+    const drawer = page.getByRole("complementary", { name: "Feedback comments" });
+    await expect(drawer.getByText("Persisted note about the hero")).toBeVisible();
+    await expect(drawer.getByText("not sent")).toBeHidden();
+
+    // The unsent-work store stays empty; only the receipts store is used.
+    const keys = await page.evaluate(() => ({
+      pins: localStorage.getItem("tyrekick:pins:" + location.pathname),
+      receipts: localStorage.getItem("tyrekick:receipts:" + location.pathname),
+    }));
+    expect(keys.pins).toBeNull();
+    expect(keys.receipts).not.toBeNull();
   });
 });

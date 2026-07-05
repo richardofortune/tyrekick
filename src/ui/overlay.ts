@@ -43,7 +43,12 @@ export function createOverlay(rt: Runtime): Overlay {
   function pinLabel(p: Pin): string {
     if (p.status === "pending") return "Comment " + p.n + " (drafting)";
     const snippet = p.body ? ": " + p.body.slice(0, 60) : "";
-    return "Comment " + p.n + snippet;
+    const closed = p.receipt
+      ? p.receipt.status === "resolved"
+        ? " (resolved)"
+        : " (declined)"
+      : "";
+    return "Comment " + p.n + closed + snippet;
   }
 
   function makePinEl(p: Pin): void {
@@ -73,6 +78,8 @@ export function createOverlay(rt: Runtime): Overlay {
     const s = p.el.querySelector("span");
     if (s) s.textContent = String(p.n);
     p.el.setAttribute("aria-label", pinLabel(p));
+    p.el.classList.toggle("resolved", !!p.receipt && p.receipt.status === "resolved");
+    p.el.classList.toggle("declined", !!p.receipt && p.receipt.status === "declined");
   }
 
   function renumberPins(): void {
@@ -117,7 +124,12 @@ export function createOverlay(rt: Runtime): Overlay {
       tip.setAttribute("role", "tooltip");
       root.appendChild(tip);
     }
-    tip.textContent = p.body.length > TIP_MAX ? p.body.slice(0, TIP_MAX) + "…" : p.body;
+    let text = p.body.length > TIP_MAX ? p.body.slice(0, TIP_MAX) + "…" : p.body;
+    if (p.receipt) {
+      const mark = p.receipt.status === "resolved" ? "✓ Resolved" : "✕ Declined";
+      text += "\n" + mark + (p.receipt.note ? " — " + p.receipt.note : "");
+    }
+    tip.textContent = text;
     tip.classList.remove("hidden");
     const cx = p.docX - window.scrollX;
     const cy = p.docY - window.scrollY;
@@ -233,6 +245,8 @@ export function createOverlay(rt: Runtime): Overlay {
       replyToId: parentId,
       fx: rect && rect.w > 0 ? Math.min(Math.max((clientX - rect.x) / rect.w, 0), 1) : null,
       fy: rect && rect.h > 0 ? Math.min(Math.max((clientY - rect.y) / rect.h, 0), 1) : null,
+      deliveredId: null,
+      receipt: null,
       anchor,
       body: "",
       reviewer: null,

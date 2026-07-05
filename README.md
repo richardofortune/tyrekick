@@ -200,7 +200,7 @@ With `transport: "discord"`, this payload is instead formatted into a readable D
 
 This is deliberately a zero-backend tool. That comes with tradeoffs:
 
-- **No reading feedback back into the widget yet.** Comments go out to your destination; resolution status doesn't (yet) surface on the reviewer's pins. Threads, retry, and recovery all work — but they're the reviewer's own session, not a shared view.
+- **Receipts close the loop on the worker path only.** With the Cloudflare destination, resolving a comment turns the reviewer's pin green with the resolution note attached; on Discord (write-only) there is no read-back.
 - **Reviews are per-browser.** Two reviewers each see their own pins, not each other's; comments meet at the destination, not on the page.
 - **No screenshots or session replay.** Only the JSON payload above is sent — no images, no DOM capture, no recording. The structured element/context capture is the deliberate alternative.
 - **Spam.** A public webhook can receive junk — that's the tradeoff for having no backend and no gatekeeper. Mitigate it by pointing `transport: "json"` at the [Cloudflare template](destinations/cloudflare) and adding validation/rate-limiting there, or by sending to a **private** Discord channel that only your reviewers can reach. See [docs/destinations](docs/destinations.md) for the hosting-based decision table.

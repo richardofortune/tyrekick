@@ -50,9 +50,16 @@ test.describe("unsent-work recovery", () => {
     await expect(toggle).not.toHaveClass(/failed/);
     expect(hook.count()).toBe(3); // 2 failed attempts + 1 successful retry
 
-    // Delivered — nothing left in localStorage to restore.
+    // Delivered: the unsent-work store empties; the comment graduates to the
+    // receipts store and survives the next reload as a sent pin.
     await page.reload();
-    await expect(page.getByRole("button", { name: "View comments" })).toBeHidden();
+    await expect(page.getByRole("button", { name: "View comments" })).toBeVisible();
+    const keys = await page.evaluate(() => ({
+      pins: localStorage.getItem("tyrekick:pins:" + location.pathname),
+      receipts: localStorage.getItem("tyrekick:receipts:" + location.pathname),
+    }));
+    expect(keys.pins).toBeNull();
+    expect(keys.receipts).not.toBeNull();
 
     expect(errors).toEqual([]);
   });

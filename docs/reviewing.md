@@ -41,9 +41,24 @@ is happening, full-strength while you're commenting or browsing them.
 - **Click** a pin to open its thread right there: the comment, any replies,
   and Follow up / Retry / Discard actions. Esc, clicking elsewhere, or
   clicking the pin again closes it.
-- Badge colours: **accent** = delivered, **red** = not sent yet.
+- Badge colours: **accent** = delivered, **red** = not sent yet, **green** =
+  resolved (worker destinations only — see below), **grey** = declined.
 - Pins re-attach to the element they were about, so they stay accurate across
   window resizes and reloads (when the element still exists).
+
+## Receipts: your pin turns green
+
+On worker destinations, delivered comments come back after a reload as sent
+pins, and the widget quietly checks what happened to them. When the builder
+(or their agent) resolves your comment, the pin turns **green** — hover it and
+the resolution note appears with your original text ("✓ Resolved — moved the
+CTA above the fold"). Declined comments show their reason the same way.
+Closed entries in the drawer gain a **Got it** button: clicking it retires the
+mark (and its replies) for good — the thread finished its job.
+
+Receipts are held for up to 14 days (newest 50), only in your own browser,
+and only with `persist: true`. On Discord destinations there is no read-back,
+so delivered comments simply don't return after a reload.
 
 ## The drawer
 

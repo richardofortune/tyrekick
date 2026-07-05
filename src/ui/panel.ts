@@ -335,12 +335,14 @@ export function createPanel(rt: Runtime): Panel {
 
     if (ok) {
       pin.status = "sent";
+      pin.deliveredId = payload.id; // the receipt capability for this comment
       if (pin.el) {
         pin.el.classList.remove("failed");
         pin.el.classList.add("sent");
       }
       rt.clearDraft();
       rt.savePins();
+      rt.saveReceipts();
       rt.drawer.refresh();
       submitBtn.disabled = true;
       status.className = "status ok";

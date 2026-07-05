@@ -71,7 +71,11 @@ When asked to "fix what people flagged":
 4. Summarize for the human: flagged / changed / resolved / declined-with-why.
 
 `declined` with a reason matters as much as `resolved` — reviewers who are
-silently ignored stop reviewing.
+silently ignored stop reviewing. And your notes now travel all the way back:
+resolving turns the reviewer's pin **green with your note attached**
+(receipts, worker path), and mirrors the closure to Discord when the tee is
+configured. Write notes for the reviewer who'll read them at the pin, not
+just for the log.
 
 ## Why resolution notes are written carefully
 

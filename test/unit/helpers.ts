@@ -192,7 +192,11 @@ export function trigger(): HTMLElement {
 }
 
 export function dialog(): HTMLElement | null {
-  return getShadow().querySelector<HTMLElement>('[role="dialog"]');
+  // The COMPOSER dialog specifically — the thread popover is also
+  // role="dialog", so match on the contract-defined accessible name.
+  return getShadow().querySelector<HTMLElement>(
+    '[role="dialog"][aria-label="Leave a comment"]',
+  );
 }
 
 // ---- interaction -----------------------------------------------------------
@@ -209,7 +213,13 @@ export function enterCommentMode(): void {
 export function clickPoint(clientX: number, clientY: number): void {
   const shadow = getShadow();
   if (dialog()) return;
-  const candidates = Array.from(shadow.querySelectorAll<HTMLElement>("*"));
+  // Prefer the capture layer: with persistent pins, earlier-rendered pin
+  // buttons would otherwise swallow the click and open a thread popover.
+  const cap = shadow.querySelector<HTMLElement>(".capture");
+  const candidates = [
+    ...(cap ? [cap] : []),
+    ...Array.from(shadow.querySelectorAll<HTMLElement>("*")),
+  ];
   for (const el of candidates) {
     const ev = new MouseEvent("click", {
       bubbles: true,
@@ -304,6 +314,14 @@ export async function cleanup(destroy?: () => void): Promise<void> {
   }
   document.body.innerHTML = "";
   document.head.querySelectorAll("style").forEach((s) => s.remove());
+  // Widget storage (pins/draft/receipts) must never leak between tests.
+  try {
+    for (const k of Object.keys(localStorage)) {
+      if (k.startsWith("tyrekick:")) localStorage.removeItem(k);
+    }
+  } catch {
+    /* ignore */
+  }
 }
 
 // ---- tiny internal utils ---------------------------------------------------

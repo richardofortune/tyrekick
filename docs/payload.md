@@ -103,5 +103,7 @@ readable message and POSTed as `{ content }`:
 
 The [Cloudflare destination](destinations.md) stores the payload verbatim
 plus server fields: `status` (`open`/`approved`/`declined`/`resolved`),
-`received_at`, `resolved_at`, `resolution_note`. Those never travel through
-the reviewer's browser.
+`received_at`, `resolved_at`, `resolution_note`. The only slice that travels
+back to the reviewer's browser is the receipts view —
+`{id, status, resolved_at, resolution_note}` for payload ids the browser
+already holds (see [Destinations](destinations.md)).

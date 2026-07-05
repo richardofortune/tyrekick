@@ -167,7 +167,19 @@ if no such id.
 
 Body: `{ "status": "resolved" | "open", "note": "optional note" }`. Resolving
 sets `resolved_at` + `resolution_note`; reopening clears both. Returns the
-updated record.
+updated record. With the Discord tee configured (below), resolved/declined
+transitions are also mirrored to the channel (`✅ resolved: …note`), so the
+humans who saw the comment arrive also see it close.
+
+### `GET /receipts?ids=<uuid>,<uuid>` — widget closure lookups (no token)
+
+The one deliberately **unauthenticated** read: the widget uses it to turn a
+reviewer's pin green after their comment is resolved. Payload ids are
+unguessable UUIDv4 capabilities known only to the browser that submitted the
+comment; the route accepts exact ids only (batch capped at 50), silently omits
+unknown ids, and returns nothing but
+`{ id, status, resolved_at, resolution_note }` per hit. It cannot list, search,
+or enumerate.
 
 ## Optional: forward every comment to Discord (tee)
 

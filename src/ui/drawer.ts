@@ -86,8 +86,10 @@ export function createDrawer(rt: Runtime): Drawer {
     btn.disabled = true;
     btn.textContent = "Sending…";
     let ok = false;
+    let sentId: string | null = null;
     try {
       const payload = buildPayload(rt, p, p.body, p.reviewer, p.at || undefined);
+      sentId = payload.id;
       ok = (await send(rt.cfg.webhook, rt.cfg.transport, payload)).ok;
     } catch {
       ok = false;
@@ -95,11 +97,13 @@ export function createDrawer(rt: Runtime): Drawer {
     if (p.status !== "failed") return; // discarded or re-sent elsewhere mid-flight
     if (ok) {
       p.status = "sent";
+      p.deliveredId = sentId;
       if (p.el) {
         p.el.classList.remove("failed");
         p.el.classList.add("sent");
       }
       rt.savePins();
+      rt.saveReceipts();
       refresh();
     } else {
       btn.disabled = false;
@@ -111,6 +115,14 @@ export function createDrawer(rt: Runtime): Drawer {
   function discard(p: Pin): void {
     rt.overlay.removePin(p); // also renumbers and refreshes this drawer
     rt.savePins();
+  }
+
+  /** "Got it": the reviewer acknowledges a closed comment — its mark is done.
+   *  Dismissing a root takes its replies with it (the thread closed together). */
+  function acknowledge(p: Pin): void {
+    for (const c of rt.pins.filter((q) => q.replyToId === p.id)) rt.overlay.removePin(c);
+    rt.overlay.removePin(p);
+    rt.saveReceipts();
   }
 
   /**
@@ -169,7 +181,10 @@ export function createDrawer(rt: Runtime): Drawer {
     const threadNumber = thread.n || p.n;
     const entry = document.createElement("div");
     entry.className =
-      "entry" + (p.status === "failed" ? " failed" : "") + (reply ? " reply" : "");
+      "entry" +
+      (p.status === "failed" ? " failed" : "") +
+      (reply ? " reply" : "") +
+      (p.receipt ? (p.receipt.status === "resolved" ? " resolved" : " declined") : "");
 
     const go = document.createElement("button");
     go.type = "button";
@@ -200,8 +215,15 @@ export function createDrawer(rt: Runtime): Drawer {
     const t = fmtTime(p.at);
     if (t) bits.push(t);
     if (p.status === "failed") bits.push("not sent");
+    if (p.receipt) bits.push(p.receipt.status === "resolved" ? "✓ resolved" : "✕ declined");
     meta.textContent = bits.join(" · ");
     main.appendChild(meta);
+    if (p.receipt && p.receipt.note) {
+      const note = document.createElement("span");
+      note.className = "note";
+      note.textContent = p.receipt.note;
+      main.appendChild(note);
+    }
     go.appendChild(main);
 
     if (locatable) {
@@ -236,6 +258,16 @@ export function createDrawer(rt: Runtime): Drawer {
       );
       db.addEventListener("click", () => discard(p));
       actions.appendChild(db);
+    }
+
+    if (p.receipt && p.replyToId === null) {
+      const ok = document.createElement("button");
+      ok.type = "button";
+      ok.className = "gotit";
+      ok.textContent = "Got it";
+      ok.setAttribute("aria-label", "Dismiss closed comment " + threadNumber);
+      ok.addEventListener("click", () => acknowledge(p));
+      actions.appendChild(ok);
     }
 
     const fu = document.createElement("button");
@@ -391,6 +423,7 @@ export function createDrawer(rt: Runtime): Drawer {
 
     rt.root.appendChild(el);
     rt.overlay.syncPins();
+    rt.checkReceipts(); // opening the overview is a natural moment to refresh statuses
     toggle.setAttribute("aria-expanded", "true");
     closeBtn.focus();
   }

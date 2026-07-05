@@ -50,6 +50,15 @@ export interface Pin {
    */
   fx: number | null;
   fy: number | null;
+  /**
+   * The payload id of the DELIVERED comment (uuid; differs from Pin.id — a new
+   * payload id is minted per send attempt). It is the capability used to look
+   * up fix-status on the worker's /receipts route. Null until a send succeeds;
+   * meaningless on the Discord transport (write-only, no read-back).
+   */
+  deliveredId: string | null;
+  /** Closure state pulled back from the worker, or null while open/unknown. */
+  receipt: { status: "resolved" | "declined"; note: string | null; at: string | null } | null;
   anchor: FeedbackPayload["anchor"];
   /** comment text as submitted (empty while pending) */
   body: string;
@@ -123,11 +132,23 @@ export interface Runtime {
   savePins(): void;
   saveDraft(d: Draft): void;
   clearDraft(): void;
+  /** Persist delivered-comment receipts (worker transport only, persist-gated). */
+  saveReceipts(): void;
+  /** Ask the worker for fix-status on restored delivered comments (throttled, silent). */
+  checkReceipts(): void;
 }
 
 let rt: Runtime | null = null;
 let resizeCb: (() => void) | null = null;
 let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+/** Delivered ids restored from the receipts store — the set worth polling. */
+const receiptWatch = new Set<string>();
+let lastReceiptCheck = 0;
+
+/** How long a delivered-comment receipt stays worth restoring/polling. */
+const RECEIPT_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
+const RECEIPT_MAX_COUNT = 50;
+const RECEIPT_POLL_MIN_MS = 60_000;
 
 /**
  * Re-derive each root pin's document position from its anchored element's
@@ -240,6 +261,8 @@ export function init(config: TyrekickConfig): void {
     savePins,
     saveDraft,
     clearDraft,
+    saveReceipts,
+    checkReceipts,
   };
 
   rt.overlay = createOverlay(rt);
@@ -254,6 +277,7 @@ export function init(config: TyrekickConfig): void {
 
   if (cfg.persist) restore();
   rt.drawer.refresh();
+  checkReceipts();
 
   // Pins re-attach to their anchored element (selector + in-element fraction)
   // so they survive viewport/layout changes; raw doc coords are the fallback.
@@ -280,6 +304,8 @@ export function destroy(): void {
     clearTimeout(resizeTimer);
     resizeTimer = null;
   }
+  receiptWatch.clear();
+  lastReceiptCheck = 0;
   try {
     stopErrors();
   } catch {
@@ -316,6 +342,9 @@ function pinsKey(): string {
 function draftKey(): string {
   return "tyrekick:draft:" + location.pathname;
 }
+function receiptsKey(): string {
+  return "tyrekick:receipts:" + location.pathname;
+}
 
 function savePins(): void {
   if (!rt || !rt.cfg.persist) return;
@@ -347,6 +376,143 @@ function savePins(): void {
   }
 }
 
+/**
+ * Persist delivered-comment receipts so a returning reviewer's pins can show
+ * what happened to them. Worker transport only (Discord has no read-back) and
+ * persist-gated like all storage. Newest-first, capped in count and age.
+ */
+function saveReceipts(): void {
+  if (!rt || !rt.cfg.persist || rt.cfg.transport !== "json") return;
+  try {
+    const cutoff = Date.now() - RECEIPT_MAX_AGE_MS;
+    const data = rt.pins
+      .filter((p) => p.deliveredId !== null && p.status === "sent")
+      .filter((p) => {
+        const ts = Date.parse(p.at);
+        return !Number.isFinite(ts) || ts >= cutoff;
+      })
+      .sort((a, b) => (a.at < b.at ? 1 : -1))
+      .slice(0, RECEIPT_MAX_COUNT)
+      .map((p) => ({
+        d: p.deliveredId,
+        i: p.id,
+        n: p.n,
+        x: p.docX,
+        y: p.docY,
+        a: p.anchor,
+        b: p.body,
+        r: p.reviewer,
+        t: p.at,
+        ri: p.replyToId,
+        ex: p.fx,
+        ey: p.fy,
+      }));
+    if (data.length) {
+      localStorage.setItem(receiptsKey(), JSON.stringify(data));
+    } else {
+      localStorage.removeItem(receiptsKey());
+    }
+  } catch {
+    /* storage unavailable/full — non-fatal */
+  }
+}
+
+function restoreReceipts(): void {
+  if (!rt) return;
+  try {
+    const raw = localStorage.getItem(receiptsKey());
+    if (!raw) return;
+    const arr = JSON.parse(raw) as Array<{
+      d?: string;
+      i?: string;
+      n?: number;
+      x?: number;
+      y?: number;
+      a?: Pin["anchor"];
+      b?: string;
+      r?: string | null;
+      t?: string;
+      ri?: string | null;
+      ex?: number | null;
+      ey?: number | null;
+    }>;
+    if (!Array.isArray(arr)) return;
+    const cutoff = Date.now() - RECEIPT_MAX_AGE_MS;
+    for (const d of arr) {
+      if (!d || typeof d.d !== "string") continue;
+      const ts = Date.parse(d.t || "");
+      if (Number.isFinite(ts) && ts < cutoff) continue;
+      receiptWatch.add(d.d);
+      rt.pins.push({
+        id: typeof d.i === "string" ? d.i : uuid(),
+        n: typeof d.n === "number" ? d.n : 0,
+        docX: typeof d.x === "number" ? d.x : 0,
+        docY: typeof d.y === "number" ? d.y : 0,
+        clientX: 0,
+        clientY: 0,
+        status: "sent",
+        replyToId: typeof d.ri === "string" ? d.ri : null,
+        fx: typeof d.ex === "number" ? d.ex : null,
+        fy: typeof d.ey === "number" ? d.ey : null,
+        deliveredId: d.d,
+        receipt: null,
+        anchor: upgradeAnchor(d.a),
+        body: typeof d.b === "string" ? d.b : "",
+        reviewer: typeof d.r === "string" ? d.r : null,
+        at: typeof d.t === "string" ? d.t : "",
+        el: null,
+      });
+    }
+  } catch {
+    /* ignore corrupt data */
+  }
+}
+
+/**
+ * Ask the worker what happened to restored delivered comments (the /receipts
+ * capability route). Fire-and-forget, throttled, and silent on every failure —
+ * a destination without the route simply never turns pins green.
+ */
+function checkReceipts(): void {
+  if (!rt || rt.cfg.transport !== "json") return;
+  const now = Date.now();
+  if (now - lastReceiptCheck < RECEIPT_POLL_MIN_MS) return;
+  const ids = rt.pins
+    .map((p) => p.deliveredId)
+    .filter((id): id is string => id !== null && receiptWatch.has(id))
+    .slice(0, RECEIPT_MAX_COUNT);
+  if (!ids.length) return;
+  lastReceiptCheck = now;
+  const base = rt.cfg.webhook.replace(/\/feedback\/?$/, "");
+  void fetch(base + "/receipts?ids=" + ids.join(","))
+    .then((res) => (res && res.ok ? res.json() : null))
+    .then((data: unknown) => {
+      const body = data as { ok?: unknown; receipts?: unknown } | null;
+      if (!rt || !body || body.ok !== true || !Array.isArray(body.receipts)) return;
+      let changed = false;
+      for (const r of body.receipts as Array<{
+        id?: unknown;
+        status?: unknown;
+        resolved_at?: unknown;
+        resolution_note?: unknown;
+      }>) {
+        if (!r || typeof r.id !== "string") continue;
+        if (r.status !== "resolved" && r.status !== "declined") continue;
+        const pin = rt.pins.find((p) => p.deliveredId === r.id);
+        if (!pin) continue;
+        const note = typeof r.resolution_note === "string" ? r.resolution_note : null;
+        const at = typeof r.resolved_at === "string" ? r.resolved_at : null;
+        if (pin.receipt && pin.receipt.status === r.status && pin.receipt.note === note) continue;
+        pin.receipt = { status: r.status, note, at };
+        changed = true;
+      }
+      if (changed && rt.drawer) rt.drawer.refresh(); // refresh also re-syncs pins
+    })
+    .catch(() => {
+      /* silent by contract — never a console error */
+    });
+}
+
 function saveDraft(d: Draft): void {
   if (!rt) return;
   rt.pendingDraft = d;
@@ -371,6 +537,9 @@ function clearDraft(): void {
 
 function restore(): void {
   if (!rt) return;
+  // Delivered comments first (chronologically they came first), then unsent
+  // work; a single renumber pass at the end covers both.
+  restoreReceipts();
   try {
     const raw = localStorage.getItem(pinsKey());
     if (raw) {
@@ -417,6 +586,8 @@ function restore(): void {
                   : null,
             fx: typeof d.ex === "number" ? d.ex : null,
             fy: typeof d.ey === "number" ? d.ey : null,
+            deliveredId: null,
+            receipt: null,
             anchor: upgradeAnchor(d.a),
             body,
             reviewer: typeof d.r === "string" ? d.r : null,
@@ -424,12 +595,12 @@ function restore(): void {
             el: null,
           });
         }
-        normalizeRestoredPins(rt.pins);
       }
     }
   } catch {
     /* ignore corrupt data */
   }
+  normalizeRestoredPins(rt.pins);
   try {
     const raw = localStorage.getItem(draftKey());
     if (raw) rt.pendingDraft = JSON.parse(raw) as Draft;

@@ -40,19 +40,23 @@ build pointing at odd spots is expected; the payload's `element.text` and
 
 Accent badge = delivered. Red badge (pin, drawer entry, or the count on the
 drawer toggle) = **not sent yet** — retry or discard it from the drawer or the
-pin's own popover. Dimmed pins just mean the widget is idle; hover or click
-them any time.
+pin's own popover. **Green** = resolved (the note is in the tooltip and drawer
+entry); **grey** = declined, with its reason. Dimmed pins just mean the widget
+is idle; hover or click them any time.
 
 ## Where does Tyrekick store things locally?
 
-Only with `persist: true` (default), only for unsent work, keyed per page:
+Only with `persist: true` (default), keyed per page:
 
 - `tyrekick:pins:<pathname>` — failed (undelivered) comments awaiting retry
 - `tyrekick:draft:<pathname>` — unsent composer text
+- `tyrekick:receipts:<pathname>` — delivered-comment receipts (worker
+  transport only): the ids and pin geometry needed to show you what happened
+  to your comments. Capped at 50 records / 14 days, pruned automatically.
 
-Delivered comments are **never** stored locally; the destination is their
-home. `persist: false` reads/writes nothing. Clearing: delete those keys, or
-just Retry/Discard from the drawer — the keys clean themselves up when empty.
+The destination remains the comments' home — receipts are pointers, not a
+shadow copy, and "Got it" (or Retry/Discard for unsent work) cleans the keys
+up as you go. `persist: false` reads/writes nothing.
 
 ## Privacy — what is never captured
 
@@ -93,9 +97,8 @@ worker, never a raw Discord webhook).
 - **No screenshots or session replay** — the structured payload is the
   product; images are deliberately out (bundle stays ~12 KB gzipped,
   dependency-free).
-- **No reading feedback back into the widget yet** — reviewers don't see
-  resolution status on their pins (planned: capability-based receipts on the
-  worker path).
+- **Receipts are worker-only** — on Discord destinations there's no read-back,
+  so pins can't turn green and delivered comments don't return after reloads.
 - **Discord is write-only** — the MCP agent loop needs the worker.
 - **Reviews are per-browser** — two reviewers see their own pins, not each
   other's (comments meet at the destination, not on the page).

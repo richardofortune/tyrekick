@@ -43,7 +43,9 @@ worker — it takes minutes and the widget change is one attribute.
 >
 > Forwarding is fire-and-forget: a Discord outage never affects the ingest
 > response the widget sees. Humans get the ping; agents keep the queryable
-> store.
+> store — and when a comment is resolved or declined, the closure is mirrored
+> to the channel too (`✅ resolved: … — note`), so the loop closes in front of
+> everyone who watched it open.
 
 ## Cloudflare Worker (the actual loop)
 
@@ -77,6 +79,7 @@ record in KV with server fields: `status` (`open` → `approved`/`declined` →
 | `GET /feedback?status=&route=&project=&since=&limit=` | Bearer token | List, newest first (`limit` default 50, max 200) |
 | `GET /feedback/:id` | Bearer token | Full single record |
 | `PATCH /feedback/:id` | Bearer token | `{ status, note? }` — walk the triage ladder |
+| `GET /receipts?ids=…` | none (capability ids) | Widget closure lookups — exact payload-UUIDs only, batch ≤50, returns status/when/note and nothing else. This is what turns a reviewer's pin green. |
 
 Auth is `Authorization: Bearer <TYREKICK_TOKEN>`; wrong/missing token → 401.
 One worker serves many projects — records are filterable by `project`
