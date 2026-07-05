@@ -8,3 +8,4 @@ playwright-report/
 .wrangler/
 .claude/
 .vscode/
+wrangler.local.toml
