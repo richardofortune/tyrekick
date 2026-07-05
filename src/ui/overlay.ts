@@ -2,6 +2,13 @@
  * Comment mode: a full-viewport transparent capture layer (crosshair) inside
  * the shadow root, a dismissible hint bar, and numbered pins. Handles mouse and
  * touch. Pins live in document space so they stay glued to content on scroll.
+ *
+ * Pins are first-class objects, not decorations: they render whenever any
+ * exist (dimmed while the widget is idle, full strength when engaged), expose
+ * a ~36px hit target, show their comment on hover/focus, and open the thread
+ * popover on click. Scroll/resize tracking is owned HERE, tied to pin
+ * visibility, so a visible pin can never freeze mid-viewport regardless of
+ * which surface (drawer, composer, popover) is coming or going.
  */
 import type { Overlay, Pin, Runtime } from "../index";
 import { computeAnchor } from "../capture/anchor";
@@ -9,6 +16,7 @@ import { uuid } from "../capture/context";
 
 const HINT_TEXT = "Click anywhere to leave a comment — Esc to cancel";
 const HINT_TEXT_TOUCH = "Tap anywhere to leave a comment";
+const TIP_MAX = 140;
 
 function hintText(): string {
   try {
@@ -26,22 +34,45 @@ export function createOverlay(rt: Runtime): Overlay {
   let active = false;
   let capture: HTMLElement | null = null;
   let hint: HTMLElement | null = null;
+  /** Whether the window scroll/resize listeners are attached (pins visible). */
+  let tracking = false;
+  /** Reviewer pressed "Hide pins" in the drawer; comment mode overrides. */
+  let hiddenByUser = false;
+  let tip: HTMLElement | null = null;
+
+  function pinLabel(p: Pin): string {
+    if (p.status === "pending") return "Comment " + p.n + " (drafting)";
+    const snippet = p.body ? ": " + p.body.slice(0, 60) : "";
+    return "Comment " + p.n + snippet;
+  }
 
   function makePinEl(p: Pin): void {
-    const el = document.createElement("div");
+    const el = document.createElement("button");
+    el.type = "button";
     el.className =
       "pin" + (p.status === "sent" ? " sent" : p.status === "failed" ? " failed" : "");
+    el.setAttribute("aria-label", pinLabel(p));
     const span = document.createElement("span");
     span.textContent = String(p.n);
     el.appendChild(span);
+    el.addEventListener("click", () => {
+      if (p.status === "pending") return; // the composer is already its interface
+      hideTip();
+      rt.drawer.openThread(p);
+    });
+    el.addEventListener("mouseenter", () => showTip(p));
+    el.addEventListener("mouseleave", hideTip);
+    el.addEventListener("focus", () => showTip(p));
+    el.addEventListener("blur", hideTip);
     p.el = el;
     root.appendChild(el);
   }
 
-  function syncPinBadge(p: Pin): void {
+  function syncPinEl(p: Pin): void {
     if (!p.el) return;
     const s = p.el.querySelector("span");
     if (s) s.textContent = String(p.n);
+    p.el.setAttribute("aria-label", pinLabel(p));
   }
 
   function renumberPins(): void {
@@ -52,7 +83,7 @@ export function createOverlay(rt: Runtime): Overlay {
       n += 1;
       p.n = n;
       roots.set(p.id, p);
-      syncPinBadge(p);
+      syncPinEl(p);
     }
     for (const p of rt.pins) {
       if (p.replyToId === null) continue;
@@ -76,21 +107,94 @@ export function createOverlay(rt: Runtime): Overlay {
     }
   }
 
-  function showPins(): void {
-    for (const p of rt.pins) {
-      if (p.replyToId !== null) continue; // replies have no page marker
-      if (!p.el || !p.el.isConnected) makePinEl(p);
-      p.el!.classList.remove("hidden");
+  /* ---- hover/focus tooltip: the comment text, right at the pin ---- */
+
+  function showTip(p: Pin): void {
+    if (!p.body || !p.el) return;
+    if (!tip) {
+      tip = document.createElement("div");
+      tip.className = "tip hidden";
+      tip.setAttribute("role", "tooltip");
+      root.appendChild(tip);
     }
-    layout();
+    tip.textContent = p.body.length > TIP_MAX ? p.body.slice(0, TIP_MAX) + "…" : p.body;
+    tip.classList.remove("hidden");
+    const cx = p.docX - window.scrollX;
+    const cy = p.docY - window.scrollY;
+    const w = tip.offsetWidth;
+    const h = tip.offsetHeight;
+    const left = Math.min(Math.max(cx - w / 2, 8), window.innerWidth - w - 8);
+    let top = cy - 18 - h - 8; // above the reticle
+    if (top < 8) top = cy + 22; // flip below when clipped
+    tip.style.left = left + "px";
+    tip.style.top = top + "px";
   }
 
-  function hidePins(): void {
-    for (const p of rt.pins) if (p.el) p.el.classList.add("hidden");
+  function hideTip(): void {
+    if (tip) tip.classList.add("hidden");
   }
+
+  /* ---- visibility & tracking: pins own their own presence ---- */
 
   function onScroll(): void {
+    hideTip(); // anchored to a viewport position that just changed
     layout();
+  }
+
+  function startTracking(): void {
+    if (tracking) return;
+    tracking = true;
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+  }
+
+  function stopTracking(): void {
+    if (!tracking) return;
+    tracking = false;
+    window.removeEventListener("scroll", onScroll);
+    window.removeEventListener("resize", onScroll);
+  }
+
+  function shouldShow(): boolean {
+    if (!rt.pins.some((p) => p.replyToId === null)) return false;
+    if (active) return true; // you must see existing pins to not duplicate them
+    return !hiddenByUser;
+  }
+
+  function syncPins(): void {
+    const show = shouldShow();
+    for (const p of rt.pins) {
+      if (p.replyToId !== null) continue; // replies have no page marker
+      if (show) {
+        if (!p.el || !p.el.isConnected) makePinEl(p);
+        syncPinEl(p);
+        p.el!.classList.remove("hidden");
+      } else if (p.el) {
+        p.el.classList.add("hidden");
+      }
+    }
+    // Idle = no surface engaged; pins stay present but recede.
+    const engaged =
+      active ||
+      (rt.drawer ? rt.drawer.isOpen() : false) ||
+      (rt.panel ? rt.panel.isOpen() : false);
+    rt.host.classList.toggle("tk-engaged", engaged);
+    if (show) {
+      startTracking();
+      layout();
+    } else {
+      stopTracking();
+      hideTip();
+    }
+  }
+
+  function setPinsHidden(hidden: boolean): void {
+    hiddenByUser = hidden;
+    syncPins();
+  }
+
+  function pinsHidden(): boolean {
+    return hiddenByUser;
   }
 
   function onKey(e: KeyboardEvent): void {
@@ -139,9 +243,9 @@ export function createOverlay(rt: Runtime): Overlay {
     renumberPins();
     if (parentId === null) {
       makePinEl(pin);
-      syncPinBadge(pin);
+      syncPinEl(pin);
       pin.el!.classList.add("drop");
-      layout();
+      syncPins();
     }
     return pin;
   }
@@ -194,10 +298,8 @@ export function createOverlay(rt: Runtime): Overlay {
 
     root.appendChild(capture);
     root.appendChild(hint);
-    showPins();
+    syncPins();
 
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll);
     document.addEventListener("keydown", onKey, true);
     rt.trigger.classList.add("hidden");
     done.focus();
@@ -217,10 +319,8 @@ export function createOverlay(rt: Runtime): Overlay {
       hint.remove();
       hint = null;
     }
-    // Keep pins visible if the comment drawer is showing them.
-    if (!rt.drawer || !rt.drawer.isOpen()) hidePins();
-    window.removeEventListener("scroll", onScroll);
-    window.removeEventListener("resize", onScroll);
+    // Pins stay on the page — they are the reviewer's marks, not mode UI.
+    syncPins();
     document.removeEventListener("keydown", onKey, true);
     rt.trigger.classList.remove("hidden");
     rt.trigger.focus();
@@ -236,6 +336,7 @@ export function createOverlay(rt: Runtime): Overlay {
     if (i >= 0) rt.pins.splice(i, 1);
     if (p.el) p.el.remove();
     renumberPins();
+    syncPins();
     if (rt.drawer) rt.drawer.refresh();
   }
 
@@ -245,9 +346,14 @@ export function createOverlay(rt: Runtime): Overlay {
 
   function destroy(): void {
     exit();
+    stopTracking();
     for (const p of rt.pins) {
       if (p.el) p.el.remove();
       p.el = null;
+    }
+    if (tip) {
+      tip.remove();
+      tip = null;
     }
   }
 
@@ -259,8 +365,9 @@ export function createOverlay(rt: Runtime): Overlay {
     captureOff,
     addPin,
     removePin,
-    showPins,
-    hidePins,
+    syncPins,
+    setPinsHidden,
+    pinsHidden,
     isActive,
     focus,
     destroy,

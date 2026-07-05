@@ -40,12 +40,17 @@ button:focus-visible,textarea:focus-visible,input:focus-visible,a:focus-visible{
 .capture{position:fixed;inset:0;cursor:crosshair;background:transparent;z-index:calc(var(--tk-z) + 1)}
 .hint{position:fixed;top:16px;left:50%;transform:translateX(-50%);max-width:calc(100vw - 24px);display:flex;gap:10px;align-items:center;background:var(--tk-ink);color:var(--tk-paper);padding:8px 14px;border-radius:8px;font-size:13px;box-shadow:0 2px 12px rgba(0,0,0,.35);z-index:calc(var(--tk-z) + 3)}
 .hint button{background:transparent;border:1px solid var(--tk-line);color:var(--tk-paper);border-radius:6px;padding:2px 10px;font-size:12px}
-.pin{position:fixed;width:24px;height:24px;margin:-12px 0 0 -12px;opacity:.65;pointer-events:none;z-index:calc(var(--tk-z) + 2)}
-.pin::before{content:"";position:absolute;inset:0;background:linear-gradient(var(--tk-ink),var(--tk-ink)) 0 0/8px 2px,linear-gradient(var(--tk-ink),var(--tk-ink)) 0 0/2px 8px,linear-gradient(var(--tk-ink),var(--tk-ink)) 100% 0/8px 2px,linear-gradient(var(--tk-ink),var(--tk-ink)) 100% 0/2px 8px,linear-gradient(var(--tk-ink),var(--tk-ink)) 0 100%/8px 2px,linear-gradient(var(--tk-ink),var(--tk-ink)) 0 100%/2px 8px,linear-gradient(var(--tk-ink),var(--tk-ink)) 100% 100%/8px 2px,linear-gradient(var(--tk-ink),var(--tk-ink)) 100% 100%/2px 8px;background-repeat:no-repeat}
-.pin span{position:absolute;right:-7px;bottom:-7px;min-width:15px;height:15px;padding:0 3px;border-radius:4px;background:var(--tk-accent);color:var(--tk-accent-ink);font:600 10px/15px var(--tk-mono);letter-spacing:-.01em;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.35)}
+.pin{position:fixed;width:36px;height:36px;margin:-18px 0 0 -18px;padding:0;border:0;background:transparent;opacity:.65;cursor:pointer;z-index:calc(var(--tk-z) + 2)}
+.pin:not(.sent):not(.failed){pointer-events:none}
+.pin::before{content:"";position:absolute;inset:6px;background:linear-gradient(var(--tk-ink),var(--tk-ink)) 0 0/8px 2px,linear-gradient(var(--tk-ink),var(--tk-ink)) 0 0/2px 8px,linear-gradient(var(--tk-ink),var(--tk-ink)) 100% 0/8px 2px,linear-gradient(var(--tk-ink),var(--tk-ink)) 100% 0/2px 8px,linear-gradient(var(--tk-ink),var(--tk-ink)) 0 100%/8px 2px,linear-gradient(var(--tk-ink),var(--tk-ink)) 0 100%/2px 8px,linear-gradient(var(--tk-ink),var(--tk-ink)) 100% 100%/8px 2px,linear-gradient(var(--tk-ink),var(--tk-ink)) 100% 100%/2px 8px;background-repeat:no-repeat}
+.pin span{position:absolute;right:-1px;bottom:-1px;min-width:15px;height:15px;padding:0 3px;border-radius:4px;background:var(--tk-accent);color:var(--tk-accent-ink);font:600 10px/15px var(--tk-mono);letter-spacing:-.01em;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.35)}
 .pin.sent{opacity:1}
 .pin.failed{opacity:1}
 .pin.failed span{background:var(--tk-flag);color:#fff}
+:host(:not(.tk-engaged)) .pin{opacity:.45}
+.pin:hover,.pin:focus-visible,:host(:not(.tk-engaged)) .pin:hover,:host(:not(.tk-engaged)) .pin:focus-visible{opacity:1}
+.pin.ring,:host(:not(.tk-engaged)) .pin.ring{opacity:1;border-radius:10px;box-shadow:0 0 0 2px var(--tk-accent)}
+.tip{position:fixed;max-width:260px;background:var(--tk-ink);color:var(--tk-paper);padding:6px 9px;border-radius:6px;font-size:12px;line-height:1.35;box-shadow:0 2px 12px rgba(0,0,0,.35);pointer-events:none;white-space:pre-wrap;word-break:break-word;z-index:calc(var(--tk-z) + 5)}
 .panel{position:fixed;width:300px;max-width:calc(100vw - 24px);background:var(--tk-paper);color:var(--tk-ink);border:1px solid var(--tk-line);border-radius:12px;box-shadow:0 10px 34px rgba(0,0,0,.28);padding:14px;font-size:13px;z-index:calc(var(--tk-z) + 4)}
 .chip{display:block;max-width:100%;margin-bottom:8px;padding:4px 8px;background:var(--tk-surface2);border:1px solid var(--tk-line);border-radius:6px;font-family:var(--tk-mono);font-size:11px;letter-spacing:-.01em;color:var(--tk-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .panel textarea{width:100%;min-height:86px;resize:vertical;border:1px solid var(--tk-line);border-radius:8px;padding:8px;font-family:var(--tk-sans);font-size:14px;color:var(--tk-ink);background:var(--tk-paper)}
@@ -73,6 +78,14 @@ button:focus-visible,textarea:focus-visible,input:focus-visible,a:focus-visible{
 .drawer{position:fixed;top:0;right:0;bottom:0;width:320px;max-width:85vw;background:var(--tk-paper);color:var(--tk-ink);border-left:1px solid var(--tk-line);box-shadow:-6px 0 26px rgba(0,0,0,.22);display:flex;flex-direction:column;font-size:13px;z-index:calc(var(--tk-z) + 3)}
 .drawer-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--tk-line);font-weight:600}
 .drawer-head button{background:var(--tk-surface2);color:var(--tk-ink);border:1px solid var(--tk-line);border-radius:6px;padding:3px 10px;font-size:12px}
+.drawer-controls{display:flex;gap:6px}
+.thread{position:fixed;width:280px;max-width:calc(100vw - 24px);max-height:60vh;display:flex;flex-direction:column;background:var(--tk-paper);color:var(--tk-ink);border:1px solid var(--tk-line);border-radius:12px;box-shadow:0 10px 34px rgba(0,0,0,.28);font-size:13px;z-index:calc(var(--tk-z) + 4)}
+.thread-head{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--tk-line);font-weight:600}
+.thread-head button{background:var(--tk-surface2);color:var(--tk-ink);border:1px solid var(--tk-line);border-radius:6px;padding:3px 10px;font-size:12px}
+.thread-list{flex:1;overflow-y:auto;padding:8px}
+.thread-list .entry{margin-bottom:6px}
+.thread-list .entry.reply{margin-left:14px}
+.entry-go:disabled{cursor:default}
 .drawer-list{flex:1;overflow-y:auto;padding:10px}
 .drawer-empty{padding:18px 10px;color:var(--tk-ink);opacity:.6;font-size:13px;text-align:center}
 .entry{display:flex;flex-direction:column;background:var(--tk-paper);border:1px solid var(--tk-line);border-radius:10px;padding:10px;margin-bottom:8px;color:var(--tk-ink)}
@@ -94,6 +107,8 @@ button:focus-visible,textarea:focus-visible,input:focus-visible,a:focus-visible{
 .pin.pulse{animation:tk-pulse 1s ease-out 2}
 .pin.drop{animation:tk-drop .14s ease-out}
 .panel{animation:tk-rise .16s ease-out}
+.thread{animation:tk-rise .16s ease-out}
+.tip{animation:tk-fade .12s ease-out}
 }
 @keyframes tk-spin{to{transform:rotate(360deg)}}
 @keyframes tk-pulse{0%{box-shadow:0 0 0 0 var(--tk-accent)}70%{box-shadow:0 0 0 12px transparent}100%{box-shadow:0 0 0 0 transparent}}

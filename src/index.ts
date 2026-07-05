@@ -69,8 +69,15 @@ export interface Overlay {
    *  marker-less reply (used by drawer follow-ups). */
   addPin(docX: number, docY: number, anchor: Pin["anchor"], replyToId?: string | null): Pin;
   removePin(p: Pin): void;
-  showPins(): void;
-  hidePins(): void;
+  /**
+   * Reconcile pin presentation with runtime state: pins render whenever any
+   * exist (unless the reviewer hid them), dimmed when the widget is idle, with
+   * scroll/resize tracking owned here so visible pins can never drift.
+   */
+  syncPins(): void;
+  /** Reviewer's "hide pins" preference (drawer eye toggle); comment mode overrides it. */
+  setPinsHidden(hidden: boolean): void;
+  pinsHidden(): boolean;
   isActive(): boolean;
   focus(): void;
   destroy(): void;
@@ -80,6 +87,8 @@ export interface Drawer {
   open(): void;
   close(): void;
   isOpen(): boolean;
+  /** Open the thread popover for a pin's comment, anchored at the pin. */
+  openThread(p: Pin): void;
   refresh(): void;
   destroy(): void;
 }

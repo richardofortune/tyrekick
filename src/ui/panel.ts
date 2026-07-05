@@ -92,6 +92,8 @@ export function createPanel(rt: Runtime): Panel {
   let submitBtn!: HTMLButtonElement;
   let counter!: HTMLElement;
   let status!: HTMLElement;
+  /** Root pin marker highlighted while its reply composer is open. */
+  let ringEl: HTMLElement | null = null;
 
   function isOpen(): boolean {
     return !!el;
@@ -268,6 +270,13 @@ export function createPanel(rt: Runtime): Panel {
     sending = false;
     build();
     position(pin);
+    // Replying in place: keep the thread's root pin visibly the subject.
+    const root = replyRoot(rt, pin);
+    if (root && root.el) {
+      ringEl = root.el;
+      ringEl.classList.add("ring");
+    }
+    rt.overlay.syncPins(); // composer open = widget engaged (full-strength pins)
     if (prefill) {
       ta.value = prefill;
       updateCounter();
@@ -420,10 +429,13 @@ export function createPanel(rt: Runtime): Panel {
     }
     currentPin = null;
     sending = false;
+    if (ringEl) {
+      ringEl.classList.remove("ring");
+      ringEl = null;
+    }
     rt.overlay.captureOn();
-    // A follow-up composer runs outside comment mode; tidy its pins away when
-    // nothing else is showing them.
-    if (!rt.overlay.isActive() && !rt.drawer.isOpen()) rt.overlay.hidePins();
+    // Pins stay on the page (overlay policy); this just updates emphasis.
+    rt.overlay.syncPins();
     if (restoreFocus) rt.overlay.focus();
   }
 
@@ -435,6 +447,10 @@ export function createPanel(rt: Runtime): Panel {
     if (el) {
       el.remove();
       el = null;
+    }
+    if (ringEl) {
+      ringEl.classList.remove("ring");
+      ringEl = null;
     }
     currentPin = null;
   }
