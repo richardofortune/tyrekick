@@ -56,6 +56,12 @@ MCP and act on it. Reviewers never need accounts.
    - `data-app-version`: use the current git short SHA if the project is a repo
      (`git rev-parse --short HEAD`) — this lets future agents map feedback to the
      exact build. Otherwise any version string.
+   - `data-project-name`: **choose a stable kebab-case slug ONCE at install**
+     (e.g. `brew-buddy`) and record it in the project's CLAUDE.md. This is the
+     project's identity across deploys — preview hosts mint a NEW URL per deploy,
+     so the URL cannot be the identity, and if this attribute is omitted it
+     defaults to `document.title`, which forks the feedback stream the first time
+     anyone edits the title. Never derive it from the page title; never change it.
    - ESM alternative: `npm install tyrekick` then
      `import { init } from "tyrekick"; init({ webhook, appVersion, ... })`.
    - Optional attributes: `data-position="bottom-left"`, `data-accent="#hex"`,
@@ -93,6 +99,39 @@ Feedback has a triage ladder: `open` (untriaged) → `approved` / `declined` →
 If the human hasn't said whose feedback it is, ask one question: "Is this your
 own feedback, or from other reviewers?" Never silently reshape someone's
 project around untriaged strangers' comments.
+
+### Operating patterns — passive monitor vs active steward
+
+Decide (with the human) which pattern you're running; they trade friction for
+risk in opposite directions:
+
+- **Passive monitor** — read-only. Poll `list_feedback` / `feedback_stats` on a
+  cadence, digest what came in, optionally triage with `triage_feedback`, and
+  report. Touch no source. This is deliberately a *lighter* thing than an issue
+  tracker: when the work is ephemeral (prototypes iterated daily), tracking
+  issues against builds that will be replaced tomorrow is ceremony — collect,
+  summarize, let the human point. Do not add tracker weight (no sprints, no
+  boards, no severity taxonomies).
+- **Active steward** — lowest friction: treat every actionable comment as a work
+  item, fix it, redeploy, resolve. This is RISKY by construction — reviewers may
+  be wrong, conflicting, or out of scope — so the triage ladder is the brake:
+  active stewardship over `open` items is permitted ONLY in self-review mode
+  (the owner's own pins). In shared review, active mode operates on `approved`
+  items only. When in doubt, run passive and propose.
+
+**Closing the loop across redeploys:** acting usually means redeploying, and on
+preview hosts the redeploy gets a NEW URL. The feedback you resolved points at
+the old deploy. Therefore every `resolve_feedback` note after a redeploy MUST
+include the new deploy URL and the new app version, e.g.
+`note: "Moved CTA above the fold — see https://deploy-def456.example.app (v3a9c1f2)"`.
+The stable `data-project-name` (see install) is what ties the before/after
+streams together; the note is how the humans follow you across the URL change.
+
+**Why the exchange is worth keeping even when the work is disposable:** the
+feedback→fix→resolve record is a learning corpus. Patterns across a builder's
+projects ("reviewers always flag contrast", "mobile layouts draw the most
+pins") are informative even after every prototype involved is dead. Write
+resolution notes as if someone will mine them later — because something will.
 
 ### The loop
 

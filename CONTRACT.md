@@ -188,6 +188,39 @@ Status ladder: `open` (untriaged) → `approved` | `declined` → `resolved`.
   Policy lives in AGENTS.md; the widget is unchanged and reviewers never see
   triage state.
 
+## Operating patterns & project identity (addendum, 2026-07-05)
+
+Two documented patterns for the agent consuming feedback; they trade friction
+for risk in opposite directions:
+
+- **Passive monitor**: read-only. Poll list/stats, digest, optionally triage;
+  never modify source. Positioning: a deliberately LIGHTER thing than an issue
+  tracker — for ephemeral work, collecting and summarizing beats tracking.
+  No tracker weight (boards/sprints/severity) is ever added to Tyrekick.
+- **Active steward**: treats all actionable comments as work items — fix,
+  redeploy, resolve. Risky by construction; the triage ladder is the brake:
+  active over `open` only in self-review mode, otherwise `approved` only
+  (policy lives in AGENTS.md, unchanged from the triage addendum).
+
+**Project identity vs URL churn**: preview hosts mint a new origin per deploy,
+and localStorage is per-origin, so neither the URL nor client storage can be
+the thread of continuity. `project_name` IS the durable project identity
+(worker filters by it; `p:` KV metadata). Consequences, now normative:
+- Installers MUST set an explicit, stable, kebab-case `projectName` chosen once
+  (the `document.title` fallback is a documented hazard: editing the title
+  forks the feedback stream).
+- After a redeploy that changes the URL, `resolve_feedback` notes MUST carry
+  the new deploy URL + app version — the note is how humans follow the loop
+  across the churn.
+- Planned (not yet built): the per-project ingest key doubles as durable
+  project identity — one primitive for webhook-abuse revocation, cross-deploy
+  aggregation, and receipts continuity. Until then, `project_name` carries it.
+
+**Retention rationale**: even for disposable builds, the feedback→fix→resolve
+exchange is a learning corpus (cross-project patterns reported back to the
+builder). Resolution notes are written to be minable; this is the long-term
+steward-insights path and the reason resolved records keep their notes.
+
 ## File ownership (do not touch files outside your lane)
 - Core library agent: `src/**` (index.ts, auto.ts, ui/*, capture/*, transport/*).
 - Destinations agent: `destinations/**`.
