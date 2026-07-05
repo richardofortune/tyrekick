@@ -231,6 +231,14 @@ for risk in opposite directions:
   redeploy, resolve. Risky by construction; the triage ladder is the brake:
   active over `open` only in self-review mode, otherwise `approved` only
   (policy lives in AGENTS.md, unchanged from the triage addendum).
+- **Speculative steward** (added 2026-07-06): implement feedback on a PREVIEW
+  deploy without asking — permission to try is free when builds are cheap; the
+  human grants permission to KEEP by comparing before/after previews and
+  answering keep-or-kill. Never lands on mainline without a keep, so it is
+  permitted over `open` even in shared review — the preview IS the proposal.
+  The approval object is a comparison of running software, not a ticket.
+  Batching (N pins → one preview → one keep/kill session) protects the human
+  attention that is now the loop's scarcest input.
 
 **Project identity vs URL churn**: preview hosts mint a new origin per deploy,
 and localStorage is per-origin, so neither the URL nor client storage can be

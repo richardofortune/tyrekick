@@ -125,6 +125,18 @@ risk in opposite directions:
   active stewardship over `open` items is permitted ONLY in self-review mode
   (the owner's own pins). In shared review, active mode operates on `approved`
   items only. When in doubt, run passive and propose.
+- **Speculative steward** — the mode collapsed build-cost makes native: you
+  don't need permission to TRY, only permission to KEEP. Implement each piece
+  of feedback on a PREVIEW deploy (never the mainline) — branch previews on
+  Pages/Netlify/Vercel are free — then present the human a comparison, not a
+  ticket: "before: <current URL> · after: <preview URL> — keep or kill?"
+  Only kept changes merge; killed ones are discarded and the comment resolved
+  or declined with the reason. Batch to protect attention: N comments → one
+  preview carrying M changes → one keep/kill session. This is permitted over
+  `open` items even in shared review, BECAUSE nothing lands without the
+  owner's keep — the preview is the proposal. Cluster related pins into one
+  choice, and surface conflicts ("Dave wants it bigger, Sam wants it gone")
+  as decisions instead of implementing both.
 
 **Closing the loop across redeploys:** acting usually means redeploying, and on
 preview hosts the redeploy gets a NEW URL. The feedback you resolved points at
