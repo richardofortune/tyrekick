@@ -306,7 +306,7 @@
       <div class="btn-row">
         <button class="btn btn-primary" type="button">Search trips</button>
         <button class="btn btn-ghost" type="button">Surprise me</button>
-        <button class="btn btn-ghost" type="button">Save draft</button>
+        <button class="btn btn-ghost" type="button" id="save-draft">Save draft</button>
       </div>
     </section>
 
@@ -397,6 +397,20 @@
     <div>© 2026 Wander (fictional prototype). Not a real product.</div>
     <div><a href="#plan">Back to top ↑</a></div>
   </footer>
+
+  <script>
+    // "Save draft doesn't tell me anything happened" — reviewer feedback, 2026-07-06.
+    (function () {
+      var b = document.getElementById("save-draft");
+      if (!b) return;
+      b.addEventListener("click", function () {
+        var t = b.textContent;
+        b.textContent = "Saved ✓";
+        b.disabled = true;
+        setTimeout(function () { b.textContent = t; b.disabled = false; }, 1500);
+      });
+    })();
+  </script>
 
   <!-- Tyrekick: zero-backend comment overlay -->
   <script src="../dist/tyrekick.js"></script>

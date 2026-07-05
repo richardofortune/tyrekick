@@ -18,7 +18,9 @@ Pins stay on the page after you leave a comment (dimmed until you interact) — 
 
 **Full documentation** lives in [`docs/`](docs/): [getting started](docs/getting-started.md) · [configuration](docs/configuration.md) · [the reviewer experience](docs/reviewing.md) · [destinations](docs/destinations.md) · [the agent loop](docs/agent-loop.md) · [payload reference](docs/payload.md) · [troubleshooting & FAQ](docs/troubleshooting.md)
 
-<!-- TODO: record demo/index.html flow as docs/demo.gif -->
+![A reviewer pins "Save draft doesn't tell me anything happened" on the live demo; an agent reads it over MCP, ships the fix, resolves with a note — and the reviewer's pin turns green with the resolution attached.](docs/demo.gif)
+
+*Real footage, real loop: this comment was pinned on the live demo, fixed by an agent, and the pin turned green — no retyping, no tracker, no accounts.*
 
 ## 60-second quickstart (Discord)
 
