@@ -10,17 +10,22 @@
 └──────────────────┘           └────────────────────┘           └─────────────────┘
 ```
 
-The widget is a single ~8 KB script with zero dependencies, rendered in Shadow DOM so it can't fight your page. There is no Tyrekick backend, no accounts, and nothing phones home — feedback POSTs straight from the reviewer's browser to a destination **you** own. It exists for the moment an agent-built prototype needs more than one pair of eyes: instead of pasting screenshots into group chats and losing the replies, every comment arrives structured, versioned, and pinned to the exact spot.
+The widget is a single ~12 KB (gzipped) script with zero dependencies, rendered in Shadow DOM so it can't fight your page. There is no Tyrekick backend, no accounts, and nothing phones home — feedback POSTs straight from the reviewer's browser to a destination **you** own. It exists for the moment an agent-built prototype needs more than one pair of eyes: instead of pasting screenshots into group chats and losing the replies, every comment arrives structured, versioned, and pinned to the exact spot.
 
 Pins stay on the page after you leave a comment (dimmed until you interact) — hover one to see its text, click it to open the thread right there, with reply, retry, and discard actions at the pin. Reviewers also get a comment drawer (a right-hand overview listing every pin with its text — click one to jump back to that spot, or hide pins entirely), draft recovery, and full keyboard/touch support (Cmd/Ctrl+Enter sends). With `persist: true` (the default), localStorage is only used to recover unsent work across reloads — comments that couldn't be delivered come back after a reload with Retry and Discard buttons, re-pinned to the element they were about even if the window size changed.
 
 > **Agents:** installing Tyrekick into a project? Read [`AGENTS.md`](AGENTS.md) — it has the exact steps.
 
+**Full documentation** lives in [`docs/`](docs/): [getting started](docs/getting-started.md) · [configuration](docs/configuration.md) · [the reviewer experience](docs/reviewing.md) · [destinations](docs/destinations.md) · [the agent loop](docs/agent-loop.md) · [payload reference](docs/payload.md) · [troubleshooting & FAQ](docs/troubleshooting.md)
+
 <!-- TODO: record demo/index.html flow as docs/demo.gif -->
 
 ## 60-second quickstart (Discord)
 
-The fastest path is a Discord channel you control.
+The fastest path is a Discord channel you control — the taster that proves
+feedback flows somewhere you own. The full product (persistence, statuses,
+your agent closing the loop over MCP) lives on the
+[worker destination](#the-agent-loop-mcp) below.
 
 **One command** (from your project folder):
 
@@ -78,7 +83,7 @@ The reason Tyrekick exists. With the Cloudflare Worker destination, feedback isn
 3. Close the loop with one sentence:
    > *"List the open feedback and fix what people flagged, then resolve it."*
 
-The agent gets four tools — `list_feedback`, `get_feedback`, `resolve_feedback`, `feedback_stats` — and each item carries the element's visible text (greppable in your source), the nearest heading, the route, the viewport, and any uncaught page errors. A comment like *"this button does nothing"* arrives as:
+The agent gets five tools — `list_feedback`, `get_feedback`, `triage_feedback`, `resolve_feedback`, `feedback_stats` — and each item carries the element's visible text (greppable in your source), the nearest heading, the route, the viewport, and any uncaught page errors. A comment like *"this button does nothing"* arrives as:
 
 ```
 element: <button> "Search trips"
@@ -193,12 +198,12 @@ With `transport: "discord"`, this payload is instead formatted into a readable D
 
 ## Limitations
 
-This is deliberately a one-way, zero-backend tool. That comes with tradeoffs:
+This is deliberately a zero-backend tool. That comes with tradeoffs:
 
-- **No threaded replies.** Feedback is fire-and-forget; there's no conversation in the widget.
-- **No reading feedback back into the widget.** Comments go out to your destination; they are never fetched or displayed in the overlay.
-- **No screenshots or session replay.** Only the JSON payload above is sent — no images, no DOM capture, no recording.
-- **Spam.** A public webhook can receive junk — that's the tradeoff for having no backend and no gatekeeper. Mitigate it by pointing `transport: "json"` at the [Cloudflare template](destinations/cloudflare) and adding validation/rate-limiting there, or by sending to a **private** Discord channel that only your reviewers can reach.
+- **No reading feedback back into the widget yet.** Comments go out to your destination; resolution status doesn't (yet) surface on the reviewer's pins. Threads, retry, and recovery all work — but they're the reviewer's own session, not a shared view.
+- **Reviews are per-browser.** Two reviewers each see their own pins, not each other's; comments meet at the destination, not on the page.
+- **No screenshots or session replay.** Only the JSON payload above is sent — no images, no DOM capture, no recording. The structured element/context capture is the deliberate alternative.
+- **Spam.** A public webhook can receive junk — that's the tradeoff for having no backend and no gatekeeper. Mitigate it by pointing `transport: "json"` at the [Cloudflare template](destinations/cloudflare) and adding validation/rate-limiting there, or by sending to a **private** Discord channel that only your reviewers can reach. See [docs/destinations](docs/destinations.md) for the hosting-based decision table.
 
 ## Contributing
 

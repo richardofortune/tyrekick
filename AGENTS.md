@@ -6,7 +6,7 @@ project ("make this reviewable", "add tyrekick", "let people comment on this",
 
 ## What Tyrekick is
 
-A ~8 KB dependency-free script that adds a "Give feedback" button to any web page.
+A ~12 KB (gzipped) dependency-free script that adds a "Give feedback" button to any web page.
 Reviewers click a spot, type a comment, submit. The comment POSTs as structured JSON
 (element, visible text, heading, route, viewport, page errors) to a webhook the
 project owner controls. Later, you (or another agent) can pull the feedback back over

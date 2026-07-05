@@ -1,19 +1,28 @@
 # Tyrekick
 
-> Feedback loop for AI-built web prototypes. A ~8 KB dependency-free script adds a
-> "Give feedback" button; reviewers pin comments on the live page (no accounts);
-> structured JSON (element + visible text + heading + route + page errors) POSTs to
-> a webhook the owner controls (Discord or their own Cloudflare Worker); coding
-> agents pull feedback back over MCP (list_feedback / get_feedback /
-> resolve_feedback / feedback_stats) and fix what was flagged.
+> Feedback loop for AI-built web prototypes. A ~12 KB (gzipped) dependency-free
+> script adds a "Give feedback" button; reviewers pin comments on the live page
+> (no accounts); structured JSON (element + visible text + heading + route + page
+> errors) POSTs to a webhook the owner controls (Discord or their own Cloudflare
+> Worker); coding agents pull feedback back over MCP (list_feedback /
+> get_feedback / triage_feedback / resolve_feedback / feedback_stats) and fix
+> what was flagged.
 
 Install for a project: `npx tyrekick init --webhook <url> --yes` (injects the script
 tag, sends a test comment, prints the MCP command). Details in AGENTS.md.
 
 ## Docs
 
-- [AGENTS.md](AGENTS.md): exact install + feedback-loop steps for coding agents
+- [AGENTS.md](AGENTS.md): exact install + feedback-loop steps for coding agents (incl. review modes and passive/active operating patterns)
 - [README.md](README.md): human overview, config table, payload schema v2
+- [docs/README.md](docs/README.md): full documentation index
+- [docs/getting-started.md](docs/getting-started.md): install paths + destination choice by hosting risk
+- [docs/configuration.md](docs/configuration.md): every config field / data-* attribute with defaults
+- [docs/reviewing.md](docs/reviewing.md): reviewer-facing behaviour (pins, threads, drawer, keyboard/touch)
+- [docs/destinations.md](docs/destinations.md): Discord vs Cloudflare Worker, REST surface, protecting public deploys
+- [docs/agent-loop.md](docs/agent-loop.md): MCP setup, five tools, review modes, operating patterns, resolution-note conventions
+- [docs/payload.md](docs/payload.md): schema v2 field-by-field reference
+- [docs/troubleshooting.md](docs/troubleshooting.md): FAQ, storage keys, privacy guarantees, SPA notes
 - [destinations/discord/README.md](destinations/discord/README.md): zero-code Discord destination
 - [destinations/cloudflare/README.md](destinations/cloudflare/README.md): TypeScript worker destination + REST API (GET/PATCH /feedback, Bearer TYREKICK_TOKEN)
 - [mcp/README.md](mcp/README.md): MCP server (npx tyrekick-mcp), tools, claude mcp add command
