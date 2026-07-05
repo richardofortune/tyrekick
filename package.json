@@ -20,6 +20,8 @@
     "bin",
     "dist",
     "src",
+    "destinations",
+    "skills",
     "LICENSE",
     "README.md"
   ],

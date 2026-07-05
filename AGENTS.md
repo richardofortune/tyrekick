@@ -14,6 +14,13 @@ MCP and act on it. Reviewers never need accounts.
 
 ## Install (widget)
 
+> **Have the `make-reviewable` skill?** (ships in this repo at
+> `skills/make-reviewable/`, installable to `~/.claude/skills/`) — invoke it
+> instead of following the steps below by hand. It runs this whole decision
+> tree: destination choice by hosting risk, worker deploy with Discord
+> mirroring, widget install, MCP registration, and drafts the ask message
+> for reviewers.
+
 1. **Ask the human ONE question** (skip if already configured in this project):
    > "Where should feedback go — a Discord webhook URL (easiest: Server Settings →
    > Integrations → Webhooks → New Webhook → Copy URL), or a deployed Tyrekick

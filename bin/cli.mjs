@@ -15,8 +15,8 @@ import { basename, resolve } from "node:path";
 import { execSync } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 
-const VERSION = "0.2.0";
-const CDN = `https://cdn.jsdelivr.net/npm/tyrekick@0.2/dist/tyrekick.js`;
+const VERSION = "0.3.0";
+const CDN = `https://cdn.jsdelivr.net/npm/tyrekick@0.3/dist/tyrekick.js`;
 
 const HELP = `tyrekick ${VERSION} — feedback loop for AI-built prototypes
 

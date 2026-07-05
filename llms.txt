@@ -10,6 +10,10 @@
 
 Install for a project: `npx tyrekick init --webhook <url> --yes` (injects the script
 tag, sends a test comment, prints the MCP command). Details in AGENTS.md.
+Agent skill: [skills/make-reviewable/SKILL.md](skills/make-reviewable/SKILL.md) runs
+the full flow — destination choice by hosting risk, worker deploy (with optional
+Discord mirror via `wrangler secret put DISCORD_WEBHOOK`), widget install, MCP
+registration, and drafts the reviewer ask message. Copy it to ~/.claude/skills/.
 
 ## Docs
 

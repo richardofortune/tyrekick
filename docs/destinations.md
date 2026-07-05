@@ -33,9 +33,17 @@ the webhook URL is visible in your page source, which is fine on a private
 URL and a spam cannon on a public one. When you want the loop, move to the
 worker — it takes minutes and the widget change is one attribute.
 
-> **Planned:** the worker will optionally mirror ingested feedback (and
-> resolution notes) to a Discord channel, making Discord a notification view
-> on top of the worker rather than a separate destination.
+> **Best of both:** the worker can mirror every ingested comment to a Discord
+> channel — set the optional secret and Discord becomes a notification view on
+> top of the worker rather than a separate destination:
+>
+> ```bash
+> wrangler secret put DISCORD_WEBHOOK
+> ```
+>
+> Forwarding is fire-and-forget: a Discord outage never affects the ingest
+> response the widget sees. Humans get the ping; agents keep the queryable
+> store.
 
 ## Cloudflare Worker (the actual loop)
 

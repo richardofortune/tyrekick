@@ -14,7 +14,7 @@ The widget is a single ~12 KB (gzipped) script with zero dependencies, rendered 
 
 Pins stay on the page after you leave a comment (dimmed until you interact) — hover one to see its text, click it to open the thread right there, with reply, retry, and discard actions at the pin. Reviewers also get a comment drawer (a right-hand overview listing every pin with its text — click one to jump back to that spot, or hide pins entirely), draft recovery, and full keyboard/touch support (Cmd/Ctrl+Enter sends). With `persist: true` (the default), localStorage is only used to recover unsent work across reloads — comments that couldn't be delivered come back after a reload with Retry and Discard buttons, re-pinned to the element they were about even if the window size changed.
 
-> **Agents:** installing Tyrekick into a project? Read [`AGENTS.md`](AGENTS.md) — it has the exact steps.
+> **Agents:** installing Tyrekick into a project? Use the [`make-reviewable` skill](skills/make-reviewable/SKILL.md) (one sentence: it picks the destination for your hosting, deploys the worker, installs the widget, wires MCP, and drafts the ask to send reviewers) — or follow [`AGENTS.md`](AGENTS.md) step by step.
 
 **Full documentation** lives in [`docs/`](docs/): [getting started](docs/getting-started.md) · [configuration](docs/configuration.md) · [the reviewer experience](docs/reviewing.md) · [destinations](docs/destinations.md) · [the agent loop](docs/agent-loop.md) · [payload reference](docs/payload.md) · [troubleshooting & FAQ](docs/troubleshooting.md)
 
