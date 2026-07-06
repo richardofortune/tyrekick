@@ -312,7 +312,7 @@
 
     <div class="section-head" id="trips">
       <h2>Suggested trips</h2>
-      <a href="#">See all 42 results →</a>
+      <a href="#" id="see-all">See all 42 results →</a>
     </div>
 
     <section class="results">
@@ -408,6 +408,17 @@
         b.textContent = "Saved ✓";
         b.disabled = true;
         setTimeout(function () { b.textContent = t; b.disabled = false; }, 1500);
+      });
+    })();
+    // "'See all 42 results' looks clickable but goes nowhere" — reviewer feedback, 2026-07-06.
+    (function () {
+      var a = document.getElementById("see-all");
+      if (!a) return;
+      a.addEventListener("click", function (e) {
+        e.preventDefault();
+        var t = a.textContent;
+        a.textContent = "Full results page — coming in the next build";
+        setTimeout(function () { a.textContent = t; }, 2000);
       });
     })();
   </script>
