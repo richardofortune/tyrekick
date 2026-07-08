@@ -1,6 +1,26 @@
 # Tyrekick
 
-**Kick the tyres before you ship it.** Tyrekick is the feedback loop for AI-built prototypes: reviewers pin comments directly on the live page — no account, no training — and your coding agent pulls them back over MCP with the exact element, its visible text, the section heading, and any page errors attached. The agent fixes what was flagged and marks it resolved. You never retype feedback into a prompt again.
+**Kick the tyres before you ship it.** Get people you trust to review your
+AI-built prototype — and let your coding agent act on what they say.
+
+[![npm version](https://img.shields.io/npm/v/tyrekick?label=npm)](https://www.npmjs.com/package/tyrekick)
+[![gzip size](https://img.shields.io/badge/gzip-~13%20KB-brightgreen)](README.md#how-it-works)
+[![license: MIT](https://img.shields.io/npm/l/tyrekick)](LICENSE)
+[![MCP server](https://img.shields.io/badge/MCP-server-8b5cf6)](mcp/)
+
+Reviewers pin comments directly on the live page — no account, no training.
+Your coding agent pulls them back over MCP with the exact element, its visible
+text, the section heading, and any page errors attached, fixes what was
+flagged, and marks it resolved. The reviewer's pin turns green with a note.
+You never retype feedback into a prompt again.
+
+![A reviewer pins a comment on the live demo; an agent reads it over MCP, ships the fix, resolves with a note — and the reviewer's pin turns green.](docs/demo.gif)
+
+**▶ [Try the live demo](https://wander-demo.pages.dev/demo/)** &nbsp;·&nbsp; [Quickstart](docs/QUICKSTART.md) &nbsp;·&nbsp; [Docs](docs/) &nbsp;·&nbsp; ["The Outer Loop" — why this exists](docs/essays/the-outer-loop.md)
+
+*Real footage: that comment was pinned on the live demo, fixed by an agent, and the pin turned green — no retyping, no tracker, no accounts.*
+
+## How it works
 
 ```
  reviewer's browser              destination YOU own              your coding agent
@@ -14,13 +34,9 @@ The widget is a single ~12 KB (gzipped) script with zero dependencies, rendered 
 
 Pins stay on the page after you leave a comment (dimmed until you interact) — hover one to see its text, click it to open the thread right there, with reply, retry, and discard actions at the pin. Reviewers also get a comment drawer (a right-hand overview listing every pin with its text — click one to jump back to that spot, or hide pins entirely), draft recovery, and full keyboard/touch support (Cmd/Ctrl+Enter sends). With `persist: true` (the default), localStorage is only used to recover unsent work across reloads — comments that couldn't be delivered come back after a reload with Retry and Discard buttons, re-pinned to the element they were about even if the window size changed.
 
-> **Agents:** installing Tyrekick into a project? Use the [`make-reviewable` skill](skills/make-reviewable/SKILL.md) (one sentence: it picks the destination for your hosting, deploys the worker, installs the widget, wires MCP, and drafts the ask to send reviewers) — or follow [`AGENTS.md`](AGENTS.md) step by step.
+> **Agents:** installing Tyrekick into a project? Use the [`make-reviewable` skill](skills/make-reviewable/SKILL.md) — one sentence and it hosts the page if needed, picks a destination, deploys the worker, installs the widget, wires MCP, and drafts the ask to send reviewers — or follow [`AGENTS.md`](AGENTS.md) step by step.
 
-**Full documentation** lives in [`docs/`](docs/): [getting started](docs/getting-started.md) · [configuration](docs/configuration.md) · [the reviewer experience](docs/reviewing.md) · [destinations](docs/destinations.md) · [the agent loop](docs/agent-loop.md) · [payload reference](docs/payload.md) · [troubleshooting & FAQ](docs/troubleshooting.md)
-
-![A reviewer pins "Save draft doesn't tell me anything happened" on the live demo; an agent reads it over MCP, ships the fix, resolves with a note — and the reviewer's pin turns green with the resolution attached.](docs/demo.gif)
-
-*Real footage, real loop: this comment was pinned on the live demo, fixed by an agent, and the pin turned green — no retyping, no tracker, no accounts.*
+**Full documentation** lives in [`docs/`](docs/): [quickstart](docs/QUICKSTART.md) · [getting started](docs/getting-started.md) · [configuration](docs/configuration.md) · [the reviewer experience](docs/reviewing.md) · [destinations](docs/destinations.md) · [the agent loop](docs/agent-loop.md) · [payload reference](docs/payload.md) · [troubleshooting & FAQ](docs/troubleshooting.md)
 
 ## 60-second quickstart (Discord)
 
