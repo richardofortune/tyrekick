@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>messages</title>
+<style>
+  html,body{margin:0;height:100%;background:#eceef1;
+    font:15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#16181d}
+  .phone{max-width:440px;margin:0 auto;height:100%;background:#fff;display:flex;flex-direction:column;
+    box-shadow:0 0 40px rgba(0,0,0,.08)}
+  .hdr{padding:16px 18px;border-bottom:1px solid #e7e9ee;display:flex;align-items:center;gap:12px}
+  .av{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#7c6cff,#b78bff);
+    display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600}
+  .who{font-weight:600}.sub{font-size:12.5px;color:#8b919c}
+  .body{flex:1;padding:20px 16px;display:flex;flex-direction:column;gap:10px;justify-content:flex-end}
+  .bubble{max-width:78%;padding:11px 14px;border-radius:18px;background:#f0f1f4;
+    border-bottom-left-radius:5px;opacity:0;transform:translateY(8px);transition:all .4s}
+  .bubble.in{opacity:1;transform:none}
+  .lnk{margin-top:9px;padding:11px 13px;background:#fff;border:1px solid #e0e2e8;border-radius:12px;
+    display:flex;flex-direction:column;gap:2px;cursor:pointer}
+  .lnk .t{font-weight:600;color:#16181d;font-size:14px}
+  .lnk .u{color:#5aa0ff;font-size:13px}
+  .ts{font-size:11.5px;color:#a6abb4;margin-top:3px;padding-left:4px}
+</style>
+<div class="phone">
+  <div class="hdr"><div class="av">R</div><div><div class="who">Richard</div><div class="sub">wants your eyes on a prototype</div></div></div>
+  <div class="body">
+    <div class="bubble" id="msg">
+      Hey Dave — the trip planner's up 🎒 mind a quick look before I push further? Anything that feels off, just click it and tell me.
+      <div class="lnk" id="lnk"><span class="t">Wander — Trip Planner</span><span class="u">wander-demo.pages.dev</span></div>
+    </div>
+    <div class="ts" id="ts" style="opacity:0">Delivered</div>
+  </div>
+</div>
+<script>
+  window.showMsg = () => {
+    document.getElementById('msg').classList.add('in');
+    setTimeout(() => { document.getElementById('ts').style.opacity = '1'; }, 500);
+  };
+</script>

@@ -217,6 +217,8 @@ npm run e2e     # end-to-end tests (playwright)
 
 Please keep `src/types.ts` as the single source of truth — don't rename payload keys or config fields without a schema bump.
 
+**Re-rendering the demo GIF** at the top of this README: `node scripts/record-demo.mjs` films the whole loop against a throwaway local worker and re-encodes it. See [`scripts/README.md`](scripts/README.md) — the film is scripted (and tweakable) in `scripts/record-demo.mjs`.
+
 ## Built by [Frontier Operations](https://frontierops.dev)
 
 Tyrekick exists as a brand vehicle for [Frontier Operations](https://frontierops.dev): a genuinely useful, open tool that makes gathering feedback on a prototype frictionless while proving a principle we care about — your reviewers' comments never route through us. There's no Frontier backend in the loop and nothing phones home; feedback goes from the reviewer's browser straight to a destination you own. Useful software, given away, that quietly demonstrates how we think about building.

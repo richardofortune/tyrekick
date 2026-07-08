@@ -1,0 +1,66 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>agent</title>
+<style>
+  :root { color-scheme: dark; }
+  html,body{margin:0;height:100%;background:#0f1115;color:#e6e8ec;
+    font:14.5px/1.55 ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace}
+  .chrome{height:38px;display:flex;align-items:center;gap:8px;padding:0 14px;background:#171a1f;border-bottom:1px solid #23262d}
+  .dot{width:11px;height:11px;border-radius:50%}
+  .r{background:#ff5f57}.y{background:#febc2e}.g{background:#28c840}
+  .title{margin-left:10px;color:#8b919c;font-size:12.5px;letter-spacing:.02em}
+  #log{padding:22px 26px;white-space:pre-wrap;word-break:break-word}
+  .row{margin:0 0 3px}
+  .u{color:#e6e8ec}
+  .u .caret{color:#FFC53D}
+  .prompt{color:#5aa0ff}
+  .tool{color:#c9a3ff}
+  .res{color:#8b919c;padding-left:18px}
+  .res b{color:#e6e8ec;font-weight:600}
+  .ok{color:#3ddc84}
+  .note{color:#8b919c}
+  .note .file{color:#e6e8ec}
+  .blk{margin:10px 0 4px;padding:12px 14px;background:#171a1f;border:1px solid #23262d;
+    border-left:3px solid #FFC53D;border-radius:0 8px 8px 0;color:#e6e8ec;opacity:0;transition:opacity .5s}
+  .blk .lnk{color:#5aa0ff}
+  .cur{color:#FFC53D}
+</style>
+<div class="chrome"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+  <span class="title">richard@studio — coding agent</span></div>
+<div id="log"></div>
+<script>
+  const log = document.getElementById('log');
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  function typeInto(el, text, speed) {
+    return new Promise((done) => {
+      let i = 0;
+      (function tick(){
+        i++;
+        el.innerHTML = el.dataset.pre + text.slice(0, i).replace(/</g,'&lt;') +
+          (i < text.length ? '<span class="cur">▍</span>' : '');
+        if (i < text.length) setTimeout(tick, speed); else done();
+      })();
+    });
+  }
+  window.agentReset = () => { log.innerHTML = ''; };
+  // A human prompt line: "›  <typed text>"
+  window.agentPrompt = async (text) => {
+    const el = document.createElement('div'); el.className = 'row u';
+    el.dataset.pre = '<span class="prompt">›  </span>';
+    log.appendChild(el);
+    await typeInto(el, text, 20);
+  };
+  // A machine line with a class (tool/res/note), typed faster.
+  window.agentLine = async (cls, text, pre = '') => {
+    const el = document.createElement('div'); el.className = 'row ' + cls;
+    el.dataset.pre = pre;
+    log.appendChild(el);
+    await typeInto(el, text, 12);
+  };
+  // A drafted-message block, fades in whole (not typed).
+  window.agentBlock = async (html) => {
+    const el = document.createElement('div'); el.className = 'blk'; el.innerHTML = html;
+    log.appendChild(el);
+    await sleep(30); el.style.opacity = '1'; await sleep(520);
+  };
+</script>

@@ -5,10 +5,12 @@ description: >
   with one sentence. Use when the user says "make this reviewable", "get
   feedback on this", "add tyrekick", "let people comment on this", "get eyes
   on this", "ask <someone> to look at this", or when a prototype you just
-  built/deployed needs human review. Installs the feedback widget, chooses and
-  (if needed) deploys the right destination for where the app is hosted
-  (Discord taster vs Cloudflare Worker loop, with optional Discord mirroring),
-  wires the MCP read-back, and drafts the ask message to send reviewers.
+  built/deployed needs human review. Gives the app a home first if it doesn't
+  have one (deploys a static artifact / generated HTML file to Cloudflare Pages,
+  or tunnels a local-only app), then installs the feedback widget, chooses and
+  (if needed) deploys the right destination (Discord taster vs Cloudflare Worker
+  loop, with optional Discord mirroring), wires the MCP read-back, and drafts the
+  ask message to send reviewers.
 ---
 
 # make-reviewable
@@ -22,10 +24,18 @@ human should never have to know what a webhook, worker, or token is.
 Check before asking anything:
 
 - **Already installed?** Grep the HTML entry for `data-webhook` or
-  `tyrekick`. If present, skip to step 5 (the ask) — never redirect an
+  `tyrekick`. If present, skip to step 6 (the ask) — never redirect an
   existing destination.
 - **Previous decisions?** Check the project's CLAUDE.md (or equivalent) for a
   recorded Tyrekick destination / project slug. Reuse them.
+- **Does the app even have a home?** The loop needs the page to load from an
+  **http(s) origin** — a `file://` artifact, an emailed HTML file, or a
+  script-generated page with no host CANNOT send feedback out or get receipts
+  back. Classify:
+  - **hosted** — already at an http(s) URL (deployed, or a dev server reviewers
+    can reach). Note the URL; no hosting needed.
+  - **unhosted** — a static build, a single generated HTML file, or anything
+    only openable via `file://`. It has no origin → **give it one in step 2.**
 - **Where does this deploy?** Infer from the repo: `netlify.toml`,
   `vercel.json`, `wrangler.toml`, `CNAME`, gh-pages workflows, or the user's
   own words. Classify:
@@ -39,18 +49,54 @@ If no destination is recorded and you cannot infer hosting, ask the one
 question: *"Where will this be hosted (just locally / a public URL), and do
 you have a Discord channel you'd like feedback mirrored to?"*
 
-## 2. Choose the destination
+## 2. Give the app a home (only if it doesn't have one)
+
+Skip this whole step if the app is **hosted** already — use its URL. Do it if
+the app is **unhosted** (a `file://` artifact, a generated HTML file, a static
+build with no host). The feedback loop cannot work from `file://`; the page
+needs a real origin. **Inject the widget FIRST (steps 3–5 below), then host the
+copy that carries it.**
+
+Prereq for Pages/tunnel: `npx wrangler whoami` — if unauthenticated, ask the
+human to run `npx wrangler login` (you can't do it for them).
+
+Pick by who's reviewing:
+
+- **Remote reviewers, static page/build** → deploy the folder to Cloudflare
+  Pages; the printed URL is the review link:
+  ```bash
+  npx wrangler pages deploy <dir> --project-name <slug> --branch main
+  ```
+- **Remote reviewers, a local-only running app** (e.g. a Python/Flask server) →
+  open a tunnel to it:
+  ```bash
+  npx cloudflared tunnel --url http://localhost:<port>   # prints a public https URL
+  ```
+- **You / same machine only** → serving locally is enough
+  (`python3 -m http.server`, or the app's own dev server). Use the
+  `http://localhost:<port>` URL — **never `file://`.**
+
+Notes:
+- **Regenerated each run?** (e.g. a script emits the HTML) — re-inject the
+  widget and re-deploy/re-tunnel after each build. The review URL refreshes; the
+  feedback worker + MCP from later steps stay put.
+- **Same-origin shortcut:** if the app already serves its own pages (a
+  Python/Node server), it can *be* the destination — add a `POST /feedback`
+  route, point the widget at the relative `/feedback` (no CORS), and either skip
+  the separate worker or have that route forward to it.
+
+## 3. Choose the destination
 
 | Situation | Destination |
 | --- | --- |
 | Private host, user just wants comments to land in chat | Discord webhook directly (`data-transport="discord"`) — the 60-second taster; write-only, no agent loop |
-| Anything public, OR the user wants the agent to read/fix feedback | **Cloudflare Worker** (deploy it yourself — step 3), with `DISCORD_WEBHOOK` mirroring if they have a channel |
+| Anything public, OR the user wants the agent to read/fix feedback | **Cloudflare Worker** (deploy it yourself — step 4), with `DISCORD_WEBHOOK` mirroring if they have a channel |
 | Public host + user offers a raw Discord webhook | Refuse the raw webhook (it's visible in page source = spam cannon). Deploy the worker and set their Discord as the mirror — they lose nothing. |
 
 Default when in doubt: the worker. It is the actual product loop; Discord
 alone is the demo of it.
 
-## 3. Deploy the worker (when chosen)
+## 4. Deploy the worker (when chosen)
 
 Prereq: `npx wrangler whoami` — if unauthenticated, stop and ask the human to
 run `npx wrangler login` (interactive; you cannot do it for them).
@@ -99,7 +145,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 If the user has a Discord mirror set, tell them a verification message just
 appeared in their channel.
 
-## 4. Install the widget + MCP
+## 5. Install the widget + MCP
 
 ```bash
 npx tyrekick init --webhook <DESTINATION_URL> --yes --project <slug>
@@ -118,11 +164,15 @@ claude mcp add tyrekick \
   -- npx tyrekick-mcp
 ```
 
-Record in the project's CLAUDE.md: the project slug, destination URL,
+If the app was **unhosted**, host it now (step 2) — deploy/serve the copy that
+now carries the widget, and use *that* URL as the review link.
+
+Record in the project's CLAUDE.md: the project slug, the review URL (and how
+it's hosted — Pages project / tunnel / dev server), the destination URL,
 transport, worker name, and where the token lives (wrangler secret — do NOT
 write the token itself into any committed file).
 
-## 5. Draft the ask (this is the actual product)
+## 6. Draft the ask (this is the actual product)
 
 The widget collects; the ASK summons. Always end by producing a
 ready-to-paste message for wherever the humans live, addressed to anyone the
@@ -142,12 +192,13 @@ straight to <me / the agent / the Discord channel>.
 Print it, and offer: "Want me to tighten the 'look at' list or address it to
 someone else?"
 
-## 6. Report
+## 7. Report
 
-Tell the human, in plain words: where feedback goes, whether their agent can
-read it back (worker: yes / Discord-only: no — and how to upgrade later),
-the one URL to share, and the drafted ask. If anything failed (wrangler auth,
-KV create, test POST), say exactly which step and what you need.
+Tell the human, in plain words: the one URL to share (and, if you hosted it,
+where it now lives), where feedback goes, whether their agent can read it back
+(worker: yes / Discord-only: no — and how to upgrade later), and the drafted
+ask. If anything failed (wrangler auth, Pages/tunnel, KV create, test POST),
+say exactly which step and what you need.
 
 ## Guardrails
 

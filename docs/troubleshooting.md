@@ -13,6 +13,36 @@
 - **`init()` called twice?** Second call is a no-op with a console warning;
   call `destroy()` first (SPA hot-reload setups hit this).
 
+## My app is a file, not a hosted page — nothing sends
+
+This is the one setup that can't work as-is. The feedback loop needs the page
+to load from an **http(s) origin**. A standalone HTML file — opened via
+`file://`, emailed around, or a sandboxed artifact — has no origin, so the
+browser blocks the widget's network request and the comment never leaves.
+There's also no shared URL to return to, so receipts (the green pin) can't
+work either.
+
+The fix is to give the page a home:
+
+- **Deploy it** to any static host (Cloudflare Pages, Netlify Drop, GitHub
+  Pages) and share the URL, not the file:
+  ```bash
+  npx wrangler pages deploy <dir> --project-name <slug> --branch main
+  ```
+- **Tunnel a local app** if it needs its own server (e.g. Python/Flask):
+  ```bash
+  npx cloudflared tunnel --url http://localhost:<port>
+  ```
+- **Serve it locally** if it's just for you — `python3 -m http.server` and use
+  the `http://localhost:<port>` URL. **Never `file://`.**
+- **Same-origin shortcut:** if your app already serves its own pages (a
+  Python/Node server), add a `POST /feedback` route and point the widget at the
+  relative `/feedback` — no CORS, and the app itself becomes the destination.
+
+If you use a coding agent, `make-reviewable` handles all of this for you —
+it detects an unhosted page and hosts it before wiring the loop. See
+[`QUICKSTART`](QUICKSTART.md).
+
 ## Comments don't arrive
 
 - **Discord webhook + missing `data-transport="discord"`** is the most common

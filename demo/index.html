@@ -305,7 +305,7 @@
 
       <div class="btn-row">
         <button class="btn btn-primary" type="button">Search trips</button>
-        <button class="btn btn-ghost" type="button">Surprise me</button>
+        <button class="btn btn-ghost" type="button" id="surprise-me">Surprise me</button>
         <button class="btn btn-ghost" type="button" id="save-draft">Save draft</button>
       </div>
     </section>
@@ -408,6 +408,17 @@
         b.textContent = "Saved ✓";
         b.disabled = true;
         setTimeout(function () { b.textContent = t; b.disabled = false; }, 1500);
+      });
+    })();
+    // "What does 'Surprise me' do? Nothing happens" — reviewer feedback, 2026-07-06.
+    (function () {
+      var s = document.getElementById("surprise-me");
+      var dest = document.getElementById("destination");
+      if (!s || !dest) return;
+      var picks = ["Kyoto, Japan", "Lisbon, Portugal", "Oaxaca, Mexico", "Hội An, Vietnam", "Marrakesh, Morocco", "Ljubljana, Slovenia"];
+      s.addEventListener("click", function () {
+        dest.value = picks[Math.floor(Math.random() * picks.length)];
+        dest.focus();
       });
     })();
     // "'See all 42 results' looks clickable but goes nowhere" — reviewer feedback, 2026-07-06.
