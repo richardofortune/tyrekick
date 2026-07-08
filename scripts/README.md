@@ -12,10 +12,13 @@ scripts/
     console.html       the coding-agent console surface (Acts 0 & 2)
     chat.html          the phone/chat surface (the ask-lands match cut)
 docs/
-  demo-video.gif       output: full story  (~100s)  — essay / pitches
-  demo-hero.gif        output: hero cut     (~43s)   — copied to demo.gif (README)
-  demo.gif             the cut embedded in the top-level README
+  demo.gif             the cut embedded in the top-level README (committed)
+  demo-hero.gif        output: hero cut  (~43s)   — local only; copy to demo.gif to ship
+  demo-video.gif       output: full story (~100s) — local only; for pitches / hosting
 ```
+
+`demo-hero.gif` and `demo-video.gif` are gitignored — they're regenerable
+build outputs. Only `demo.gif` (the README hero) is committed.
 
 ## What it does
 

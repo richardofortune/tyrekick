@@ -9,3 +9,12 @@ playwright-report/
 .claude/
 .vscode/
 wrangler.local.toml
+
+# Internal / personal working docs — kept local, not published
+docs/blog.md
+docs/STATUS.md
+
+# Regenerable film outputs (recorder writes these; only demo.gif is committed)
+docs/demo-hero.gif
+docs/demo-video.gif
+.demo-video/
