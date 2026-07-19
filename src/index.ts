@@ -145,6 +145,14 @@ let resizeTimer: ReturnType<typeof setTimeout> | null = null;
 const receiptWatch = new Set<string>();
 let lastReceiptCheck = 0;
 
+/* ---- SPA navigation: state is keyed by pathname, so it must follow the route ---- */
+type HistoryFn = (data: unknown, unused: string, url?: string | URL | null) => void;
+/** The pathname whose pins are currently loaded; state resets when it changes. */
+let lastPath = "";
+let popCb: (() => void) | null = null;
+let origPushState: HistoryFn | null = null;
+let origReplaceState: HistoryFn | null = null;
+
 /** How long a delivered-comment receipt stays worth restoring/polling. */
 const RECEIPT_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 const RECEIPT_MAX_COUNT = 50;
@@ -173,6 +181,85 @@ function reprojectPins(): void {
     p.docY = window.scrollY + r.top + p.fy * r.height;
   }
   rt.overlay.layout();
+}
+
+/**
+ * Client-side navigation (SPA) changes location.pathname without a reload, so
+ * the once-at-init restore() never re-runs and a route's pins would otherwise
+ * linger over the next view. On a real pathname change we reset per-route state
+ * — tear down the current pins, reload storage under the new key, and reproject
+ * once the new route has painted. Query/hash-only changes are ignored because
+ * storage is keyed by pathname alone.
+ */
+function resetRoute(): void {
+  if (!rt) return;
+  // Drop any in-flight composing/reading surfaces from the previous route.
+  if (rt.panel.isOpen()) rt.panel.dismiss(false);
+  if (rt.drawer.isOpen()) rt.drawer.close();
+  // Tear down the previous route's pins (elements + in-memory list).
+  for (const p of rt.pins) {
+    if (p.el) p.el.remove();
+    p.el = null;
+  }
+  rt.pins.length = 0;
+  rt.pendingDraft = null;
+  receiptWatch.clear();
+  lastReceiptCheck = 0;
+  // Reload state for the route we've arrived at.
+  if (rt.cfg.persist) restore();
+  rt.overlay.syncPins();
+  rt.drawer.refresh();
+  checkReceipts();
+  // The framework may not have painted the new DOM yet; reproject now (raw
+  // coords are the fallback) and again next frame once selectors can resolve.
+  reprojectPins();
+  if (typeof requestAnimationFrame === "function") {
+    requestAnimationFrame(() => reprojectPins());
+  }
+}
+
+/** Fire on any navigation; only a genuine pathname change triggers a reset. */
+function onNavigate(): void {
+  if (!rt) return;
+  if (location.pathname === lastPath) return;
+  lastPath = location.pathname;
+  resetRoute();
+}
+
+function startNav(): void {
+  popCb = onNavigate;
+  window.addEventListener("popstate", popCb); // browser back/forward
+  // pushState/replaceState don't emit an event — wrap them (reverted in destroy).
+  try {
+    const wrap = (orig: HistoryFn): HistoryFn =>
+      function (this: History, data: unknown, unused: string, url?: string | URL | null) {
+        const r = orig.call(this, data, unused, url);
+        // Defer so the router can update the DOM before we reset/reproject.
+        queueMicrotask(onNavigate);
+        return r;
+      };
+    origPushState = history.pushState.bind(history) as HistoryFn;
+    origReplaceState = history.replaceState.bind(history) as HistoryFn;
+    history.pushState = wrap(origPushState) as History["pushState"];
+    history.replaceState = wrap(origReplaceState) as History["replaceState"];
+  } catch {
+    /* history unavailable — popstate still covers back/forward */
+  }
+}
+
+function stopNav(): void {
+  if (popCb) {
+    window.removeEventListener("popstate", popCb);
+    popCb = null;
+  }
+  try {
+    if (origPushState) history.pushState = origPushState as History["pushState"];
+    if (origReplaceState) history.replaceState = origReplaceState as History["replaceState"];
+  } catch {
+    /* ignore */
+  }
+  origPushState = null;
+  origReplaceState = null;
 }
 
 /* ---- theme (tk-light / tk-dark host class; "auto" tracks the OS live) ---- */
@@ -291,11 +378,17 @@ export function init(config: TyrekickConfig): void {
     resizeTimer = setTimeout(reprojectPins, 150);
   };
   window.addEventListener("resize", resizeCb);
+
+  // Follow SPA route changes so per-route pins don't leak across views.
+  lastPath = location.pathname;
+  startNav();
 }
 
 export function destroy(): void {
   if (!rt) return;
   stopTheme();
+  stopNav();
+  lastPath = "";
   if (resizeCb) {
     window.removeEventListener("resize", resizeCb);
     resizeCb = null;

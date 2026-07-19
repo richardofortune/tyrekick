@@ -5,6 +5,13 @@ versioned separately; see [`mcp/`](mcp/).
 
 ## Unreleased
 
+- **SPA route changes reset per-route pins.** Pin/draft/receipt storage is keyed
+  by `location.pathname`, but `restore()` only ran once at `init()`, so on a
+  client-routed app (history.pushState, no reload) the previous view's pins
+  lingered over the next route. The widget now follows navigation (wrapped
+  `pushState`/`replaceState` + `popstate`) and, on a real pathname change, tears
+  down the old pins, reloads storage for the new route, and reprojects — reverted
+  cleanly in `destroy()`. Query/hash-only changes are ignored.
 - **CLI grows a management surface.** Bare `npx tyrekick` now opens a
   zero-dependency, arrow-key **management menu** with a live status dashboard
   (widget / worker / MCP). New subcommands:
