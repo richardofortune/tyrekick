@@ -3,6 +3,26 @@
 Notable changes to the `tyrekick` widget. The MCP server (`tyrekick-mcp`) is
 versioned separately; see [`mcp/`](mcp/).
 
+## Unreleased
+
+- **CLI grows a management surface.** Bare `npx tyrekick` now opens a
+  zero-dependency, arrow-key **management menu** with a live status dashboard
+  (widget / worker / MCP). New subcommands:
+  - `status` — one-shot dashboard.
+  - `disable` / `enable` — remove or restore the widget while leaving the
+    worker, token, MCP registration, and **all feedback data** untouched
+    (reversible; the exact tag is stashed in `.tyrekick.disabled`).
+  - `remove` — uninstall local wiring (strip the tag + `claude mcp remove`),
+    keeping cloud data by default; `remove --teardown` additionally deletes the
+    Cloudflare worker + KV + token secret, guarded by a type-the-project-name
+    confirmation because it destroys all feedback.
+  - `init` is unchanged. CLI logic split into `bin/lib.mjs` + `bin/tui.mjs`.
+- **Framework-aware detection.** `status`/`disable`/`remove` now also detect a
+  framework/ESM install (the `import { init } from "tyrekick"` mount) — reporting
+  the file:line and reading config from the `init({…})` call. Because that mount
+  lives in user-owned source, the CLI gives precise removal guidance rather than
+  auto-editing framework code (which could break the build).
+
 ## 0.3.2
 
 - **Receipts — closure reaches the reviewer.** A resolved comment's pin turns
