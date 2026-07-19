@@ -136,6 +136,37 @@ destroy();
 
 The global (IIFE) equivalent is `window.Tyrekick.init(config)` / `window.Tyrekick.destroy()`. Calling `init()` twice without `destroy()` is a no-op and warns; a missing `webhook` or `appVersion` throws.
 
+### Frameworks / async loading (Next.js, React, bundlers)
+
+The IIFE build auto-inits by reading its own `<script>` tag via `document.currentScript`. That value is `null` whenever the tag is injected **asynchronously** (Next.js `next/script`, a React-rendered `<script>`, or any dynamic loader), so a plain CDN tag can silently fail to start. Two supported paths:
+
+1. **Set a global** (works with any loader). Define it before the widget script runs:
+
+   ```html
+   <script>window.tyrekickConfig = { webhook: "…", appVersion: "1.0" }</script>
+   ```
+
+   The IIFE build reads `window.tyrekickConfig` first, then its own `data-*`, then falls back to any `<script data-webhook>` already in the DOM.
+
+2. **Call `init()` from a client component** (recommended for Next.js App Router / React):
+
+   ```tsx
+   "use client";
+   import { useEffect } from "react";
+
+   export function TyrekickWidget() {
+     useEffect(() => {
+       let cleanup: (() => void) | undefined;
+       import("tyrekick").then(({ init, destroy }) => {
+         init({ webhook: "…", projectName: "…", appVersion: "…" });
+         cleanup = destroy;
+       });
+       return () => cleanup?.();
+     }, []);
+     return null;
+   }
+   ```
+
 ## Configuration
 
 Every field of `TyrekickConfig` (see [`src/types.ts`](src/types.ts)):
