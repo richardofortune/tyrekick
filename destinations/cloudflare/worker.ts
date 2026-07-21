@@ -16,6 +16,10 @@
  *     GET   /feedback/:id                           — single full record
  *     PATCH /feedback/:id                           — triage (approve/decline) / resolve / reopen
  *
+ *   REVIEWER-FACING (browser, no login):
+ *     GET   /receipts?ids=…    — status of comments you submitted (capability ids)
+ *     GET   /shared?project=…  — every reviewer's pins, if TYREKICK_REVIEW_KEY is set
+ *
  * The management surface is the REST API that the tyrekick-mcp
  * MCP server talks to (see /mcp in the repo), so an AI agent can pull the
  * feedback back out and act on it.
@@ -143,6 +147,23 @@ interface Env {
    * queryable store. Fire-and-forget: forwarding can never fail an ingest.
    */
   DISCORD_WEBHOOK?: string;
+  /**
+   * Optional: enables the SHARED REVIEW view (`wrangler secret put
+   * TYREKICK_REVIEW_KEY`). When set, a widget presenting this key may read
+   * back every reviewer's pins for one project — that is how reviewers see
+   * each other's comments instead of only their own.
+   *
+   * Read this before setting it: the key is embedded in the page, so it is
+   * public to anyone holding the review link. Setting it means "everyone who
+   * can open this prototype can read every comment left on it, including
+   * reviewer names." That is the intended trade for a private share link and
+   * the wrong trade for a public URL. Unset (the default) = route disabled.
+   *
+   * It is deliberately NOT TYREKICK_TOKEN: that one grants write/triage and
+   * must never reach a browser. This one is read-only, project-scoped, and
+   * revocable on its own by rotating the secret.
+   */
+  TYREKICK_REVIEW_KEY?: string;
 }
 
 /** Minimal ExecutionContext declaration (waitUntil is all we use). */
@@ -169,7 +190,7 @@ const KEY_PREFIX = "fb:";
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Tyrekick-Review-Key",
   "Access-Control-Max-Age": "86400",
 };
 
@@ -306,6 +327,151 @@ async function handleReceipts(request: Request, env: Env): Promise<Response> {
       resolution_note: r.resolution_note ?? null,
     }));
   return json({ ok: true, receipts });
+}
+
+/**
+ * GET /shared?project=<name>&route=<r> — the SHARED REVIEW view.
+ * Header: `X-Tyrekick-Review-Key: <TYREKICK_REVIEW_KEY>`.
+ *
+ * Returns every reviewer's pins for one project so the widget can render them
+ * on the page — this is what makes a review a shared conversation instead of N
+ * private ones.
+ *
+ * Security model, and how it differs from /receipts: this route DOES enumerate,
+ * which the capability-id model of /receipts deliberately refuses. That is only
+ * safe because it is (a) off unless TYREKICK_REVIEW_KEY is set, (b) scoped to
+ * one exact project_name, and (c) projected — see sharedView() for what is
+ * withheld. The key is public to anyone holding the review link, by
+ * construction; it is a door for a private link, not a secret.
+ *
+ * The key travels in a header rather than the query string so it stays out of
+ * request logs, referrers, and browser history.
+ */
+const SHARED_MAX_LIMIT = 100;
+
+/**
+ * Length-independent comparison. The key lives in the page, so this guards
+ * little in practice — but a public read endpoint should not also be a timing
+ * oracle for a secret an operator may have reused elsewhere.
+ */
+/** Strip query string and hash: "/pricing?ref=x#plans" → "/pricing". */
+function pathnameOf(route: string): string {
+  return route.split("?")[0].split("#")[0];
+}
+
+function keyMatches(presented: string, expected: string): boolean {
+  if (presented.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < presented.length; i += 1) {
+    diff |= presented.charCodeAt(i) ^ expected.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+/**
+ * What one reviewer is allowed to learn about another reviewer's comment.
+ *
+ * Included: the comment, who said it, where it points, and what happened to it.
+ * Withheld deliberately:
+ *   - `env`        — user_agent/screen/dpr fingerprint the reviewer's machine.
+ *   - `page_errors`— the prototype's stack traces are the builder's business.
+ *   - `url`        — may carry query-string secrets from the share link.
+ *   - `session_id` — correlates one person's comments across a whole session.
+ * `anchor.element.text` is safe by the payload contract: input/textarea/select
+ * values are never captured, so it can only ever be static page text.
+ */
+function sharedView(r: FeedbackRecord): Record<string, unknown> {
+  const a = r.anchor || ({} as FeedbackRecord["anchor"]);
+  return {
+    id: r.id,
+    created_at: r.created_at,
+    app_version: r.app_version,
+    route: r.route,
+    body: r.body,
+    reviewer_name: r.reviewer_name ?? null,
+    status: r.status,
+    resolved_at: r.resolved_at ?? null,
+    resolution_note: r.resolution_note ?? null,
+    anchor: {
+      x_pct: a.x_pct,
+      y_pct: a.y_pct,
+      selector: a.selector ?? null,
+      viewport: a.viewport,
+      element: a.element ?? null,
+      context: a.context ?? null,
+    },
+  };
+}
+
+async function handleShared(request: Request, env: Env): Promise<Response> {
+  // Absent secret = feature off. 404 rather than 401: an operator who never
+  // opted in should not advertise that the route exists at all.
+  if (!env.TYREKICK_REVIEW_KEY) {
+    return json({ ok: false, error: "not_found" }, 404);
+  }
+  const presented = request.headers.get("X-Tyrekick-Review-Key") ?? "";
+  if (!keyMatches(presented, env.TYREKICK_REVIEW_KEY)) {
+    return json({ ok: false, error: "unauthorized" }, 401);
+  }
+
+  const url = new URL(request.url);
+  const project = url.searchParams.get("project");
+  const route = url.searchParams.get("route");
+  // Project scope is mandatory: one worker may serve several prototypes, and a
+  // review key for one of them must not read the others.
+  if (!project) {
+    return json({ ok: false, error: "project_required" }, 400);
+  }
+
+  const keys: KVListKey<FeedbackMeta>[] = [];
+  try {
+    let cursor: string | undefined;
+    do {
+      const page = await env.FEEDBACK.list<FeedbackMeta>({ prefix: KEY_PREFIX, cursor });
+      keys.push(...page.keys);
+      cursor = page.list_complete ? undefined : page.cursor;
+    } while (cursor);
+  } catch {
+    return json({ ok: false, error: "storage_failed" }, 500);
+  }
+
+  const filtered = keys.filter((k) => {
+    const m = k.metadata;
+    if ((m?.p ?? "") !== project) return false;
+    // Match on the PATHNAME of the stored route. Records keep the full route
+    // (`/pricing?ref=x#plans`), but reviewers reach one page by links that
+    // differ only in query string — comparing whole routes would split a single
+    // page's conversation into one silo per inbound link.
+    if (route !== null && pathnameOf(m?.r ?? "") !== pathnameOf(route)) return false;
+    // "declined" is withheld from the shared view by design: declining is how
+    // an owner removes spam and noise from everyone's page, so a declined pin
+    // must stop rendering for other reviewers. Its own author still sees the
+    // outcome via /receipts, which is keyed by their own capability id.
+    if ((m?.s ?? "open") === "declined") return false;
+    return true;
+  });
+
+  filtered.sort((a, b) => (b.metadata?.t ?? "").localeCompare(a.metadata?.t ?? ""));
+  const pageKeys = filtered.slice(0, SHARED_MAX_LIMIT);
+
+  let bodies: (string | null)[];
+  try {
+    bodies = await Promise.all(pageKeys.map((k) => env.FEEDBACK.get(k.name, "text")));
+  } catch {
+    return json({ ok: false, error: "storage_failed" }, 500);
+  }
+
+  const pins: Record<string, unknown>[] = [];
+  for (const raw of bodies) {
+    if (raw === null) continue; // deleted between list() and get()
+    try {
+      pins.push(sharedView(JSON.parse(raw) as FeedbackRecord));
+    } catch {
+      // Corrupt value: skip rather than failing the whole view.
+    }
+  }
+
+  return json({ ok: true, count: pins.length, total: filtered.length, pins });
 }
 
 /** POST / and POST /feedback — open ingest of a widget FeedbackPayload. */
@@ -565,6 +731,12 @@ export default {
     // /receipts — unauthenticated capability-id status lookups (widget closure).
     if (path.endsWith("/receipts")) {
       if (request.method === "GET") return handleReceipts(request, env);
+      return json({ ok: false, error: "method_not_allowed" }, 405);
+    }
+
+    // /shared — review-key-gated project view (every reviewer's pins).
+    if (path.endsWith("/shared")) {
+      if (request.method === "GET") return handleShared(request, env);
       return json({ ok: false, error: "method_not_allowed" }, 405);
     }
 

@@ -29,6 +29,7 @@ A missing `webhook` or `appVersion` throws.
 | `fields` | *(ESM only)* | `{ name?: boolean }` | `{ name: true }` | `{ name: false }` removes the optional reviewer-name input. |
 | `transport` | `data-transport` | `"json" \| "discord"` | `"json"` | `"json"` POSTs the raw [schema-v2 payload](payload.md); `"discord"` formats it into a webhook message. |
 | `persist` | *(ESM only)* | `boolean` | `true` | localStorage is used **only for unsent recovery**: draft text and failed comments awaiting retry after a reload. Successfully sent comments are never stored. `false` = no storage keys are ever read or written. |
+| `reviewKey` | `data-review-key` | `string` | *(off)* | **Shared review**: every reviewer sees every other reviewer's pins, read-only and attributed. Must match `TYREKICK_REVIEW_KEY` on your Worker (worker transport only). The key is in your page source, so **anyone with the review link can read every comment on the project, including reviewer names** — right for a private link, wrong for a public URL. Rotate the secret to revoke. See [destinations](destinations.md#shared-review). |
 | `captureErrors` | `data-capture-errors="false"` | `boolean` | `true` | Attach the page's last ≤5 uncaught errors/unhandled rejections to each payload as `page_errors` (via `window` listeners — the console is never patched). Input **values** are never captured regardless of this flag. |
 
 `persist` and `fields` have no `data-*` equivalent — use the ESM build (or

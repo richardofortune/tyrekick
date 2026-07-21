@@ -51,6 +51,23 @@ export interface TyrekickConfig {
    * Input VALUES are never captured anywhere, regardless of this flag.
    */
   captureErrors?: boolean;
+  /**
+   * SHARED REVIEW. Setting this turns a review from N private conversations
+   * into one shared page: every reviewer sees every other reviewer's pins
+   * (read-only) alongside their own. Unset (the default) = each reviewer sees
+   * only their own pins, which is Tyrekick's historical behaviour.
+   *
+   * The value must match `TYREKICK_REVIEW_KEY` on your Worker; the Worker's
+   * `/shared` route stays disabled until that secret is set. Worker transport
+   * (`transport: "json"`) only — Discord is write-only and cannot read back.
+   *
+   * Understand the trade before switching it on: this key ships inside your
+   * page, so **anyone who can open the prototype can read every comment on
+   * it, including reviewer names**. That is the right trade for a private
+   * link shared with people you trust, and the wrong one for a public URL.
+   * Rotate the Worker secret to revoke access.
+   */
+  reviewKey?: string;
 }
 
 /**

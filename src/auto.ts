@@ -34,6 +34,7 @@ function fromDataset(d: DOMStringMap): TyrekickConfig | null {
     position: d.position as Position | undefined,
     branding: d.branding === "false" ? false : undefined,
     captureErrors: d.captureErrors === "false" ? false : undefined,
+    reviewKey: d.reviewKey,
   };
 }
 

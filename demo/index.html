@@ -448,12 +448,17 @@
 
       var webhook = params.get("webhook") || PLACEHOLDER_WEBHOOK;
       var transport = params.get("transport") === "discord" ? "discord" : "json";
+      // ?reviewKey=<key> turns on shared review (everyone sees everyone's
+      // pins). Off unless asked for — the public demo must not publish its
+      // visitors' comments to each other.
+      var reviewKey = params.get("reviewKey") || undefined;
 
       window.Tyrekick.init({
         webhook: webhook,
         appVersion: "prototype-0.1",
         projectName: "Wander Trip Planner",
         transport: transport,
+        reviewKey: reviewKey,
         // accent + theme intentionally left at defaults (crayon mark, auto dark mode)
         position: "bottom-right"
       });

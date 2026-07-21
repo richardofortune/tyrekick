@@ -112,6 +112,51 @@ page_errors: 1
 
 That's a better bug report than most humans write. Full details in [`mcp/README.md`](mcp/README.md).
 
+## Shared review (reviewers see each other)
+
+By default a review is several private conversations: each reviewer sees their
+own pins, and the comments meet at your destination. Set a **review key** and
+the page itself becomes the shared surface — everyone sees everyone's pins,
+read-only, with attribution. Reviewers stop reporting the same thing four times.
+
+```bash
+npx wrangler secret put TYREKICK_REVIEW_KEY   # on your worker; any long random string
+```
+
+```html
+<script
+  src="https://cdn.jsdelivr.net/npm/tyrekick@latest/dist/tyrekick.js"
+  data-webhook="https://your-worker.workers.dev/feedback"
+  data-app-version="v0.1"
+  data-project-name="my-prototype"
+  data-review-key="the-same-long-random-string"
+></script>
+```
+
+**Read this before switching it on.** The key ships inside your page, so it is
+public to anyone holding the review link: *anyone who can open the prototype can
+read every comment on it, including reviewer names.* That is the right trade for
+a private link you sent to five people you trust, and the wrong one for a public
+URL. There is no per-reviewer identity to scope it more finely — reviewers never
+log in, which is the point. Rotate the secret to revoke access.
+
+What it does and doesn't do:
+
+- **Read-only.** You can see and reply to another reviewer's comment; replies
+  travel to your destination like any other comment, not peer-to-peer. There is
+  no live presence and no on-page threading between reviewers.
+- **Declining hides.** A comment you decline (via MCP or the API) disappears
+  from *everyone's* page — that is how you clear spam and noise. Its author
+  still sees the outcome on their own pin.
+- **Project-scoped.** One worker can serve several prototypes; a review key
+  only ever reads the `projectName` it was asked for. Set an explicit, stable
+  `projectName` — the `document.title` fallback will fork your feedback stream
+  the first time you edit the title.
+- **Worker only.** Discord is write-only by design and has no shared view.
+- **What other reviewers never see:** your user agent, screen or device
+  fingerprint, the prototype's page errors, the full URL (share links can carry
+  query-string secrets), or your session id.
+
 ## Programmatic / ESM usage
 
 Install from your registry and initialise explicitly (the ESM build does **not** auto-init):
@@ -183,6 +228,7 @@ Every field of `TyrekickConfig` (see [`src/types.ts`](src/types.ts)):
 | `fields` | `{ name?: boolean }` | no | `{ name: true }` | Toggle the optional reviewer-name input. |
 | `transport` | `"json" \| "discord"` | no | `"json"` | How the payload is delivered (raw JSON vs. Discord message). |
 | `persist` | `boolean` | no | `true` | Use `localStorage` only for unsent recovery: draft text and failed comments that still need retry after a reload. Submitted comments are not kept in localStorage. No storage keys are read/written when `false`. |
+| `reviewKey` | `string` | no | — | **Shared review** (opt-in): every reviewer sees every other reviewer's pins, read-only. Must match `TYREKICK_REVIEW_KEY` on your Worker. The key ships in your page, so anyone with the review link can read every comment — right for a private link, wrong for a public URL. See [shared review](#shared-review-reviewers-see-each-other). |
 | `captureErrors` | `boolean` | no | `true` | Record the page's uncaught errors / unhandled rejections (via `window` `"error"` and `"unhandledrejection"` listeners — the console is never patched) and attach the last ≤5 to each payload as `page_errors`. Set `data-capture-errors="false"` on the script tag for the auto-init build. Input **values** are never captured anywhere, regardless of this flag. |
 
 ## Payload schema (v2)
@@ -250,7 +296,7 @@ With `transport: "discord"`, this payload is instead formatted into a readable D
 This is deliberately a zero-backend tool. That comes with tradeoffs:
 
 - **Receipts close the loop on the worker path only.** With the Cloudflare destination, resolving a comment turns the reviewer's pin green with the resolution note attached; on Discord (write-only) there is no read-back.
-- **Reviews are per-browser.** Two reviewers each see their own pins, not each other's; comments meet at the destination, not on the page.
+- **Reviews are per-browser by default.** Two reviewers each see their own pins, not each other's; comments meet at the destination, not on the page. [Shared review](#shared-review-reviewers-see-each-other) opts into the other behaviour on the worker path, at the cost of making every comment readable by anyone with the link.
 - **No screenshots or session replay.** Only the JSON payload above is sent — no images, no DOM capture, no recording. The structured element/context capture is the deliberate alternative.
 - **Spam.** A public webhook can receive junk — that's the tradeoff for having no backend and no gatekeeper. Mitigate it by pointing `transport: "json"` at the [Cloudflare template](destinations/cloudflare) and adding validation/rate-limiting there, or by sending to a **private** Discord channel that only your reviewers can reach. See [docs/destinations](docs/destinations.md) for the hosting-based decision table.
 
