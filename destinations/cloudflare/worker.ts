@@ -10,6 +10,9 @@
  *   INGEST (open — reviewers stay frictionless):
  *     POST /            — accept a FeedbackPayload (back-compat root route)
  *     POST /feedback    — same
+ *     GET  /            — health summary ("yes, this is a live Tyrekick
+ *                         destination"), so pasting the worker URL into a
+ *                         browser doesn't look like a broken deploy
  *
  *   MANAGEMENT (token-gated — `Authorization: Bearer <TYREKICK_TOKEN>`):
  *     GET   /feedback?status=&route=&since=&limit=  — list, newest first
@@ -713,9 +716,30 @@ export default {
     // its leading slash, so "/xfeedback" can never match.
     const itemMarker = path.lastIndexOf("/feedback/");
 
-    // POST / (back-compat) — open ingest.
+    // POST / (back-compat) — open ingest. GET / answers "yes, this is a
+    // Tyrekick destination and it is alive", because the first thing anyone
+    // does with a worker URL is paste it into a browser, and a bare 405 makes
+    // a working deploy look broken. It advertises route NAMES only: every one
+    // of them is already public knowledge (the template is open source) and
+    // each stays gated exactly as before, so this discloses nothing that
+    // reading the repo wouldn't. Never report whether the secrets are set —
+    // that would turn the root into a configuration oracle.
     if (path === "/") {
       if (request.method === "POST") return handleIngest(request, env, ctx);
+      if (request.method === "GET") {
+        return json({
+          ok: true,
+          service: "tyrekick",
+          routes: [
+            "POST /feedback",
+            "GET /feedback (token)",
+            "GET /feedback/:id (token)",
+            "PATCH /feedback/:id (token)",
+            "GET /receipts?ids=",
+            "GET /shared?project= (review key)",
+          ],
+        });
+      }
       return json({ ok: false, error: "method_not_allowed" }, 405);
     }
 

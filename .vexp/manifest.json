@@ -1,6 +1,6 @@
 {
   "file_hashes": {
-    "AGENTS.md": "ceb9e2c30480f3815f6a6d70028128bbafbc2ec06044ee589c810f878313786f",
+    "AGENTS.md": "4d4d28b681c6a9c041ec80825932772a50a5df904c86b6efce51df5f818a9536",
     "CHANGELOG.md": "a961eac62616bf3bf1d488485029f979fce4187f0b2a931df20b1e153ee2c01f",
     "CONTRACT.md": "c3838d1e61103b4edf5c65b095e1481746b0e29c1bc00e7c121321f90747ec38",
     "README.md": "e0db656e101d47b84204a051a3deb987ecfbd0f8bbcbf3c9cd927474faf63fd6",
@@ -9,8 +9,8 @@
     "bin/tui.mjs": "eb6fbf9b3a95425587aee4f17ef236b20dc405ba71d54781e2a317da2c02cb96",
     "build.mjs": "f27bd77bd674c1167d7d6cd671963648d5ba43ad3c2e27bf104f5a6bacb2f1d6",
     "destinations/README.md": "8ebc76773c5b20fe3bcf0abdd5c06a7f07eef113de7db536a0ae4e33364a5f51",
-    "destinations/cloudflare/README.md": "f66847ed3c32ae36ddff783333b355472c964aff836f17ae493e41a103ce6806",
-    "destinations/cloudflare/worker.ts": "3f7f1142fcc7678af01c2a17a793941b6e1870d5a1c17b18be6041294db02944",
+    "destinations/cloudflare/README.md": "f6b678dab3dcebe9a5708707089323af86482fceed5058a839e08d23e0bf04a2",
+    "destinations/cloudflare/worker.ts": "87c797d9f87b5b22b9b96558c8485f9a2405a92f2dfb85d618d7f57180c1ebf8",
     "destinations/discord/README.md": "becc0b78f10479c6f1e121cf3a6053451509ce407f5dae9a4345007f186aad03",
     "docs/DEMO.md": "053e1f3f259887b2520c15fc4a9d0b5ef6982c17b66d423c6de0e225145fa497",
     "docs/QUICKSTART.md": "550adafe296924842e810e22eb93b2838bb3e19c072f9a6e51eabc3e569d8a12",
@@ -81,16 +81,16 @@
     "test/unit/selector.test.ts": "b8a451c9233d706531067a3a354af0aca624a58ae2d1eb1f4a152c4af831e175",
     "test/unit/shared.test.ts": "0d271f37048c2f09c4c72c8a94ab0a5b35dd8496c7deb085fcbf769d561698ba",
     "test/unit/spa.test.ts": "2f8f9f67f57c1b599d8919fb0af21c584f4ca6dbf9cbebedee7b1874bafc3376",
-    "test/unit/worker-shared.test.ts": "ef4a2677b63ee2d7529162a60018eb2be8d97064152a4ff8e649eabec2f228f3",
+    "test/unit/worker-shared.test.ts": "b77c1d08d14c4eee1d06ae32ab9b71e4d9f6762eb8495dca40caf41d53c41d57",
     "vitest.config.ts": "9607be0c9432c9939a3248b44f0ce942582d1318cd551ed3c68f590dad839405"
   },
-  "indexed_at_commit": "9560f0641e02284f1af7289fa6b01bc6b42206cf",
-  "indexed_at_timestamp": "2026-07-21T07:49:17.294299+00:00",
+  "indexed_at_commit": "ed14e6ec9c23508ae87df27d469002dfc6bebc09",
+  "indexed_at_timestamp": "2026-07-21T08:26:11.364528+00:00",
   "schema_version": 3,
   "stats": {
-    "total_edges": 663,
+    "total_edges": 657,
     "total_files": 83,
-    "total_nodes": 522
+    "total_nodes": 517
   },
   "vexp_version": "2.2.3"
 }

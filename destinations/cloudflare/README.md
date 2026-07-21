@@ -181,6 +181,21 @@ unknown ids, and returns nothing but
 `{ id, status, resolved_at, resolution_note }` per hit. It cannot list, search,
 or enumerate.
 
+### `GET /` — is this thing on?
+
+The worker is an API, not a website — but the first thing anyone does with a
+worker URL is paste it into a browser, so the root answers with a health
+summary rather than a bare error:
+
+```bash
+curl "$WORKER/"
+# {"ok":true,"service":"tyrekick","routes":[…]}
+```
+
+Useful as a post-deploy check. It lists route names only (all public knowledge —
+this template is open source) and deliberately never reveals whether your
+secrets are configured, so it can't be used to probe your setup.
+
 ### `GET /shared?project=&route=` — shared review (review key, not the token)
 
 Off unless you opt in. Set the secret and reviewers see **each other's** pins on
