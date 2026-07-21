@@ -48,14 +48,19 @@ export function createOverlay(rt: Runtime): Overlay {
         ? " (resolved)"
         : " (declined)"
       : "";
-    return "Comment " + p.n + closed + snippet;
+    // In a shared review, whose comment it is matters as much as what it says —
+    // and a screen-reader user gets that from the label or not at all.
+    const who = p.foreign ? " by " + (p.reviewer || "another reviewer") : "";
+    return "Comment " + p.n + who + closed + snippet;
   }
 
   function makePinEl(p: Pin): void {
     const el = document.createElement("button");
     el.type = "button";
     el.className =
-      "pin" + (p.status === "sent" ? " sent" : p.status === "failed" ? " failed" : "");
+      "pin" +
+      (p.status === "sent" ? " sent" : p.status === "failed" ? " failed" : "") +
+      (p.foreign ? " foreign" : "");
     el.setAttribute("aria-label", pinLabel(p));
     const span = document.createElement("span");
     span.textContent = String(p.n);
@@ -125,6 +130,7 @@ export function createOverlay(rt: Runtime): Overlay {
       root.appendChild(tip);
     }
     let text = p.body.length > TIP_MAX ? p.body.slice(0, TIP_MAX) + "…" : p.body;
+    if (p.foreign) text = (p.reviewer || "Another reviewer") + ": " + text;
     if (p.receipt) {
       const mark = p.receipt.status === "resolved" ? "✓ Resolved" : "✕ Declined";
       text += "\n" + mark + (p.receipt.note ? " — " + p.receipt.note : "");
@@ -247,6 +253,7 @@ export function createOverlay(rt: Runtime): Overlay {
       fy: rect && rect.h > 0 ? Math.min(Math.max((clientY - rect.y) / rect.h, 0), 1) : null,
       deliveredId: null,
       receipt: null,
+      foreign: false,
       anchor,
       body: "",
       reviewer: null,

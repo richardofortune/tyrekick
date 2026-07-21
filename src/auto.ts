@@ -28,6 +28,7 @@ function boot(): void {
       position: d.position as Position | undefined,
       branding: d.branding === "false" ? false : undefined,
       captureErrors: d.captureErrors === "false" ? false : undefined,
+      reviewKey: d.reviewKey,
     });
   } catch (err) {
     // Auto-init failures (e.g. missing data-app-version) must not surface as an

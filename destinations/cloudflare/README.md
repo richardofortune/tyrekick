@@ -181,6 +181,45 @@ unknown ids, and returns nothing but
 `{ id, status, resolved_at, resolution_note }` per hit. It cannot list, search,
 or enumerate.
 
+### `GET /shared?project=&route=` — shared review (review key, not the token)
+
+Off unless you opt in. Set the secret and reviewers see **each other's** pins on
+the page instead of only their own:
+
+```bash
+wrangler secret put TYREKICK_REVIEW_KEY   # e.g. the output of: openssl rand -hex 32
+```
+
+Then put the same value on the widget as `data-review-key` (see the
+[README](../../README.md#shared-review-reviewers-see-each-other)). The worker
+authenticates it via the `X-Tyrekick-Review-Key` header — a header rather than a
+query parameter so the key stays out of request logs, referrers, and history.
+
+```bash
+curl -H "X-Tyrekick-Review-Key: $TYREKICK_REVIEW_KEY" \
+  "$WORKER/shared?project=my-prototype&route=/pricing"
+```
+
+**Understand what you are turning on.** The key is embedded in the page you
+share, so it is public to everyone holding the review link: anyone who can open
+the prototype can read every comment on that project, including reviewer names.
+Correct for a private link; wrong for a public URL. Rotate the secret to revoke.
+
+Guard rails, all enforced by the worker:
+
+- Secret unset → `404` (an operator who never opted in does not advertise the
+  route). Wrong key → `401`. Missing `project` → `400`; project scope is
+  mandatory, so a key for one prototype cannot read another on the same worker.
+- **`declined` records are withheld.** Declining a comment therefore removes it
+  from every reviewer's page — that is your spam and noise control. The author
+  still learns the outcome through `/receipts`, keyed by their own id.
+- The response is a **projection**, not the record: it carries `body`,
+  `reviewer_name`, `created_at`, `route`, `app_version`, status/note and
+  `anchor`. It never carries `env` (user-agent fingerprint), `page_errors`,
+  `url` (share links can hold query-string secrets) or `session_id`.
+- `TYREKICK_REVIEW_KEY` is read-only and grants nothing on `/feedback`.
+  `TYREKICK_TOKEN` stays server-side and must never reach a browser.
+
 ## Optional: forward every comment to Discord (tee)
 
 Want the human-friendly channel ping AND the agent-queryable store from one

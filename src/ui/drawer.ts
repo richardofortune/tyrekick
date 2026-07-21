@@ -184,6 +184,7 @@ export function createDrawer(rt: Runtime): Drawer {
       "entry" +
       (p.status === "failed" ? " failed" : "") +
       (reply ? " reply" : "") +
+      (p.foreign ? " foreign" : "") +
       (p.receipt ? (p.receipt.status === "resolved" ? " resolved" : " declined") : "");
 
     const go = document.createElement("button");
@@ -211,7 +212,11 @@ export function createDrawer(rt: Runtime): Drawer {
     const meta = document.createElement("span");
     meta.className = "meta";
     const bits: string[] = [];
+    // Someone else's comment is always attributed, even when they left the
+    // name field blank — "who said this" is the whole point of a shared review,
+    // and an unattributed entry would read as the reviewer's own.
     if (p.reviewer) bits.push(p.reviewer);
+    else if (p.foreign) bits.push("Another reviewer");
     const t = fmtTime(p.at);
     if (t) bits.push(t);
     if (p.status === "failed") bits.push("not sent");
@@ -260,7 +265,10 @@ export function createDrawer(rt: Runtime): Drawer {
       actions.appendChild(db);
     }
 
-    if (p.receipt && p.replyToId === null) {
+    // "Got it" retires a closed comment from this reviewer's page. It is only
+    // offered on your OWN comments: dismissing someone else's would be undone
+    // by the next shared poll, which re-adds anything still in the view.
+    if (p.receipt && p.replyToId === null && !p.foreign) {
       const ok = document.createElement("button");
       ok.type = "button";
       ok.className = "gotit";
@@ -423,7 +431,10 @@ export function createDrawer(rt: Runtime): Drawer {
 
     rt.root.appendChild(el);
     rt.overlay.syncPins();
-    rt.checkReceipts(); // opening the overview is a natural moment to refresh statuses
+    // Opening the overview is the natural moment to refresh both halves of the
+    // picture: what happened to your comments, and what others have added.
+    rt.checkReceipts();
+    rt.fetchShared(true); // explicit "what's there now?" — not subject to the poll floor
     toggle.setAttribute("aria-expanded", "true");
     closeBtn.focus();
   }

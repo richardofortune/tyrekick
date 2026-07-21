@@ -27,6 +27,8 @@ export interface Resolved {
   transport: Transport;
   persist: boolean;
   captureErrors: boolean;
+  /** Shared-review key, or null when each reviewer sees only their own pins. */
+  reviewKey: string | null;
 }
 
 export interface Pin {
@@ -59,6 +61,14 @@ export interface Pin {
   deliveredId: string | null;
   /** Closure state pulled back from the worker, or null while open/unknown. */
   receipt: { status: "resolved" | "declined"; note: string | null; at: string | null } | null;
+  /**
+   * True when this pin is SOMEONE ELSE's comment, pulled from the worker's
+   * /shared view (reviewKey set). Foreign pins are strictly read-only: they
+   * are never persisted to localStorage, never retried or discarded, and never
+   * counted as this reviewer's unsent work. They exist so a reviewer can see
+   * what has already been said before saying it again.
+   */
+  foreign: boolean;
   anchor: FeedbackPayload["anchor"];
   /** comment text as submitted (empty while pending) */
   body: string;
@@ -136,6 +146,11 @@ export interface Runtime {
   saveReceipts(): void;
   /** Ask the worker for fix-status on restored delivered comments (throttled, silent). */
   checkReceipts(): void;
+  /**
+   * Pull every reviewer's pins from the worker's /shared view (silent, and
+   * throttled unless `force` — see SHARED_POLL_MIN_MS).
+   */
+  fetchShared(force?: boolean): void;
 }
 
 let rt: Runtime | null = null;
@@ -157,6 +172,18 @@ let origReplaceState: HistoryFn | null = null;
 const RECEIPT_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 const RECEIPT_MAX_COUNT = 50;
 const RECEIPT_POLL_MIN_MS = 60_000;
+
+/**
+ * Shared-view poll throttle for BACKGROUND refreshes (init, route change).
+ * A user-initiated refresh (opening the drawer) ignores this and is instead
+ * guarded by `sharedInFlight` — asking to see the overview is an explicit
+ * request for what is there now, and a 60s floor would make the first open
+ * after page load, the very moment the question is asked, always stale.
+ */
+const SHARED_POLL_MIN_MS = 60_000;
+let lastSharedFetch = 0;
+/** One shared request at a time: makes click-spamming the drawer harmless. */
+let sharedInFlight = false;
 
 /**
  * Re-derive each root pin's document position from its anchored element's
@@ -205,11 +232,15 @@ function resetRoute(): void {
   rt.pendingDraft = null;
   receiptWatch.clear();
   lastReceiptCheck = 0;
+  // The shared view is per-route, so the new route must be free to fetch
+  // immediately rather than waiting out the previous route's throttle.
+  lastSharedFetch = 0;
   // Reload state for the route we've arrived at.
   if (rt.cfg.persist) restore();
   rt.overlay.syncPins();
   rt.drawer.refresh();
   checkReceipts();
+  fetchShared();
   // The framework may not have painted the new DOM yet; reproject now (raw
   // coords are the fallback) and again next frame once selectors can resolve.
   reprojectPins();
@@ -323,6 +354,7 @@ export function init(config: TyrekickConfig): void {
     transport: config.transport === "discord" ? "discord" : "json",
     persist: config.persist !== false,
     captureErrors: config.captureErrors !== false,
+    reviewKey: typeof config.reviewKey === "string" && config.reviewKey ? config.reviewKey : null,
   };
 
   const host = document.createElement("div");
@@ -350,6 +382,7 @@ export function init(config: TyrekickConfig): void {
     clearDraft,
     saveReceipts,
     checkReceipts,
+    fetchShared,
   };
 
   rt.overlay = createOverlay(rt);
@@ -365,6 +398,7 @@ export function init(config: TyrekickConfig): void {
   if (cfg.persist) restore();
   rt.drawer.refresh();
   checkReceipts();
+  fetchShared();
 
   // Pins re-attach to their anchored element (selector + in-element fraction)
   // so they survive viewport/layout changes; raw doc coords are the fallback.
@@ -399,6 +433,7 @@ export function destroy(): void {
   }
   receiptWatch.clear();
   lastReceiptCheck = 0;
+  lastSharedFetch = 0;
   try {
     stopErrors();
   } catch {
@@ -479,7 +514,11 @@ function saveReceipts(): void {
   try {
     const cutoff = Date.now() - RECEIPT_MAX_AGE_MS;
     const data = rt.pins
-      .filter((p) => p.deliveredId !== null && p.status === "sent")
+      // `!p.foreign` is load-bearing: other reviewers' pins live on the server
+      // and are re-fetched every load. Persisting them here would resurrect
+      // them locally as this reviewer's own comments — and keep resurrecting
+      // them after they were declined and withdrawn from the shared view.
+      .filter((p) => !p.foreign && p.deliveredId !== null && p.status === "sent")
       .filter((p) => {
         const ts = Date.parse(p.at);
         return !Number.isFinite(ts) || ts >= cutoff;
@@ -549,6 +588,7 @@ function restoreReceipts(): void {
         fy: typeof d.ey === "number" ? d.ey : null,
         deliveredId: d.d,
         receipt: null,
+        foreign: false,
         anchor: upgradeAnchor(d.a),
         body: typeof d.b === "string" ? d.b : "",
         reviewer: typeof d.r === "string" ? d.r : null,
@@ -603,6 +643,198 @@ function checkReceipts(): void {
     })
     .catch(() => {
       /* silent by contract — never a console error */
+    });
+}
+
+/* ---- shared review (other reviewers' pins; opt-in via cfg.reviewKey) ---- */
+
+/** One pin as the worker's /shared projection sends it. All fields optional
+ *  on the wire — an older or hand-rolled destination may send less. */
+interface SharedPin {
+  id?: unknown;
+  created_at?: unknown;
+  body?: unknown;
+  reviewer_name?: unknown;
+  status?: unknown;
+  resolution_note?: unknown;
+  resolved_at?: unknown;
+  anchor?: unknown;
+}
+
+/**
+ * Order pins so every reviewer numbers them the same way: delivered comments
+ * chronologically by submission time, then this browser's unsent work (which
+ * has no submission time yet and exists only here) in its own order.
+ *
+ * Only ever called in shared mode. Single-reviewer numbering keeps its historic
+ * insertion order so existing installs renumber nothing on upgrade.
+ */
+function sortPinsChronologically(pins: Pin[]): void {
+  const order = new Map<Pin, number>();
+  pins.forEach((p, i) => order.set(p, i));
+  pins.sort((a, b) => {
+    const at = a.at || "";
+    const bt = b.at || "";
+    // Unsent work (no timestamp) always sorts after everything delivered.
+    if (!at && bt) return 1;
+    if (at && !bt) return -1;
+    if (at !== bt) return at < bt ? -1 : 1;
+    // Same timestamp (or both unsent): keep the order we already had, so
+    // numbering never flickers between polls.
+    return (order.get(a) ?? 0) - (order.get(b) ?? 0);
+  });
+}
+
+/**
+ * Fold the worker's shared view into the pin list.
+ *
+ * Rules that keep this safe:
+ *  - A shared pin that matches one of OUR delivered ids is skipped — your own
+ *    comment must not come back as a second, foreign copy of itself.
+ *  - Existing foreign pins are updated in place (status/note), never duplicated.
+ *  - Foreign pins that vanish from the view (declined, or aged past the cap)
+ *    are dropped, so declining spam removes it from everyone's page.
+ */
+function mergeShared(list: SharedPin[]): boolean {
+  if (!rt) return false;
+  const mine = new Set(
+    rt.pins.filter((p) => !p.foreign && p.deliveredId).map((p) => p.deliveredId as string),
+  );
+  const seen = new Set<string>();
+  let changed = false;
+
+  for (const s of list) {
+    if (!s || typeof s.id !== "string") continue;
+    if (mine.has(s.id)) continue; // our own comment, already on the page
+    const status = s.status;
+    // "declined" never reaches us (the worker withholds it), but an older
+    // worker might send it — treat it the same way and skip.
+    if (status === "declined") continue;
+    seen.add(s.id);
+
+    const body = typeof s.body === "string" ? s.body : "";
+    if (!body) continue;
+    const note = typeof s.resolution_note === "string" ? s.resolution_note : null;
+    const at = typeof s.created_at === "string" ? s.created_at : "";
+    const receipt: Pin["receipt"] =
+      status === "resolved"
+        ? {
+            status: "resolved",
+            note,
+            at: typeof s.resolved_at === "string" ? s.resolved_at : null,
+          }
+        : null;
+
+    const existing = rt.pins.find((p) => p.foreign && p.deliveredId === s.id);
+    if (existing) {
+      const sameReceipt =
+        (existing.receipt === null && receipt === null) ||
+        (existing.receipt !== null &&
+          receipt !== null &&
+          existing.receipt.status === receipt.status &&
+          existing.receipt.note === receipt.note);
+      if (!sameReceipt) {
+        existing.receipt = receipt;
+        changed = true;
+      }
+      continue;
+    }
+
+    const anchor = upgradeAnchor(s.anchor as Pin["anchor"] | undefined);
+    // Place it from the document percentages the other reviewer recorded. When
+    // their click also carried a selector we hand reprojectPins a centre
+    // fraction, so the pin re-anchors to the live element like a local one —
+    // the exact in-element offset isn't recoverable (it is not in the payload),
+    // and the element's centre is both stable and honest about that.
+    const doc = document.documentElement;
+    const docW = doc ? doc.scrollWidth : 0;
+    const docH = doc ? doc.scrollHeight : 0;
+    rt.pins.push({
+      // The server id doubles as the local pin id (both are UUIDs, so they
+      // cannot collide). That makes a foreign pin's identity stable across
+      // reloads, which is what lets a local reply stay attached to the comment
+      // it was answering instead of orphaning into a root.
+      id: s.id,
+      n: 0, // assigned by the renumber pass below
+      docX: (Number(anchor.x_pct) / 100) * docW,
+      docY: (Number(anchor.y_pct) / 100) * docH,
+      clientX: 0,
+      clientY: 0,
+      status: "sent",
+      replyToId: null, // threads are per-destination; a foreign pin is a root
+      fx: anchor.selector ? 0.5 : null,
+      fy: anchor.selector ? 0.5 : null,
+      deliveredId: s.id,
+      receipt,
+      foreign: true,
+      anchor,
+      body,
+      reviewer: typeof s.reviewer_name === "string" ? s.reviewer_name : null,
+      at,
+      el: null,
+    });
+    changed = true;
+  }
+
+  // Drop foreign pins the view no longer returns (declined or aged out).
+  for (let i = rt.pins.length - 1; i >= 0; i -= 1) {
+    const p = rt.pins[i];
+    if (!p.foreign) continue;
+    if (p.deliveredId && seen.has(p.deliveredId)) continue;
+    if (p.el) p.el.remove();
+    rt.pins.splice(i, 1);
+    changed = true;
+  }
+
+  if (changed) {
+    sortPinsChronologically(rt.pins);
+    normalizeRestoredPins(rt.pins);
+  }
+  return changed;
+}
+
+/**
+ * Ask the worker for every reviewer's pins on this project + route. Same
+ * posture as checkReceipts: throttled, fire-and-forget, and silent on every
+ * failure — a destination without /shared (or with the feature switched off)
+ * simply never shows foreign pins, with no console noise ever.
+ */
+function fetchShared(force?: boolean): void {
+  if (!rt || !rt.cfg.reviewKey || rt.cfg.transport !== "json") return;
+  if (sharedInFlight) return;
+  const now = Date.now();
+  if (!force && now - lastSharedFetch < SHARED_POLL_MIN_MS) return;
+  lastSharedFetch = now;
+  sharedInFlight = true;
+  const base = rt.cfg.webhook.replace(/\/feedback\/?$/, "");
+  // Scope by PATHNAME, not the full route: pins are per-pathname everywhere
+  // else in the widget (storage keys, SPA reset), and reviewers reach the same
+  // page by links that differ only in query string (?utm_source=…, ?ref=…).
+  // Sending the full route would silently split one conversation into several.
+  // It also keeps the page's own query string — which can carry link secrets —
+  // out of the request.
+  const qs =
+    "?project=" +
+    encodeURIComponent(rt.cfg.projectName) +
+    "&route=" +
+    encodeURIComponent(location.pathname);
+  void fetch(base + "/shared" + qs, {
+    headers: { "X-Tyrekick-Review-Key": rt.cfg.reviewKey },
+  })
+    .then((res) => (res && res.ok ? res.json() : null))
+    .then((data: unknown) => {
+      const body = data as { ok?: unknown; pins?: unknown } | null;
+      if (!rt || !body || body.ok !== true || !Array.isArray(body.pins)) return;
+      if (mergeShared(body.pins as SharedPin[])) {
+        rt.drawer.refresh(); // refresh also re-syncs pins
+        reprojectPins(); // foreign pins arrive with no coords — place them now
+      }
+    })
+    .catch(() => {
+      /* silent by contract — never a console error */
+    })
+    .then(() => {
+      sharedInFlight = false;
     });
 }
 
@@ -681,6 +913,7 @@ function restore(): void {
             fy: typeof d.ey === "number" ? d.ey : null,
             deliveredId: null,
             receipt: null,
+            foreign: false,
             anchor: upgradeAnchor(d.a),
             body,
             reviewer: typeof d.r === "string" ? d.r : null,

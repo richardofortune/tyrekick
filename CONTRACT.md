@@ -259,6 +259,57 @@ exchange is a learning corpus (cross-project patterns reported back to the
 builder). Resolution notes are written to be minable; this is the long-term
 steward-insights path and the reason resolved records keep their notes.
 
+## Shared review — reviewers see each other (addendum, 2026-07-21)
+
+Until now a review was N private conversations: "reviews are per-browser; two
+reviewers each see their own pins, not each other's." Shared review makes the
+page the shared surface, OPT-IN, without moving the destination or adding an
+account anywhere.
+
+- **Widget**: `reviewKey` (config) / `data-review-key` (auto-init). Unset =
+  historic behaviour exactly, no new requests. Worker transport only.
+- **Worker**: `GET /shared?project=&route=`, header
+  `X-Tyrekick-Review-Key: <TYREKICK_REVIEW_KEY>`. The secret being unset =
+  404 (an operator who never opted in does not advertise the route). Wrong key
+  = 401. Missing `project` = 400 — project scope is MANDATORY so a key for one
+  prototype cannot read another on the same worker.
+- **The key is public by construction.** It ships inside the page, so anyone
+  holding the review link can read every comment on that project. This is the
+  documented trade: correct for a private link shared with people you trust,
+  wrong for a public URL. Revocation = rotate the secret. It is deliberately
+  NOT `TYREKICK_TOKEN`, which grants write/triage and must never reach a
+  browser.
+- **Projection is normative** (`sharedView`): one reviewer may learn another's
+  `body`, `reviewer_name`, `created_at`, `route`, `app_version`, status/note
+  and `anchor`. They may NEVER learn `env` (user-agent fingerprint),
+  `page_errors` (the builder's stack traces), `url` (share-link query secrets)
+  or `session_id` (correlates a person's comments). Adding a field to the
+  payload does NOT add it here — extend `sharedView` deliberately or not at all.
+- **`declined` is withheld from the shared view.** Declining is therefore how an
+  owner removes spam/noise from *everyone's* page; the author still learns the
+  outcome via `/receipts`, which is keyed by their own capability id.
+- **Foreign pins are strictly read-only**: never persisted to localStorage
+  (they live on the server and are re-fetched), never retried/discarded, no
+  "Got it", and always attributed ("Another reviewer" when the name is blank).
+  A foreign pin's local id IS its server id, so a local reply stays attached
+  across reloads. Follow-up ON a foreign pin is allowed and is the "+1, me too"
+  path — replies still travel to the destination, never peer-to-peer.
+- **Numbering**: in shared mode pins are ordered by `created_at` (unsent local
+  work last) before renumbering, so every reviewer sees the same numbers.
+  Single-reviewer numbering keeps its historic insertion order untouched.
+  (This does not resolve the parked monotonic-numbering question; it makes the
+  numbers agree between browsers, not stable across deletions.)
+- **Refresh posture**: silent on every failure like `/receipts`. Background
+  polls (init, route change) are throttled at 60s; opening the drawer forces a
+  fetch, guarded only by a single-in-flight lock — the first drawer open after
+  load is exactly when "what did others say?" is asked.
+
+**The line, deliberately not crossed**: this is a READ-ONLY view of other
+reviewers. No live presence, no peer-to-peer threading, no conflict resolution
+— comments still meet at the destination, not on the page. Concurrent
+on-page conversation is how this becomes a collaboration product and acquires
+the tracker weight the operating-patterns addendum forbids.
+
 ## File ownership (updated 2026-07-05)
 The original multi-agent lanes (core / destinations / demo / tests as separate
 agents) are retired — the project is maintained by one human + one agent and

@@ -99,6 +99,40 @@ entirely — set `webhook` to the relative URL. Any CORS-enabled JSON endpoint
 works too: with `transport: "json"`, success is HTTP 2xx and a body that
 isn't `{"ok":false}`.
 
+## Shared review
+
+By default each reviewer sees only their own pins — comments meet at your
+destination, not on the page. Setting a **review key** flips that: everyone sees
+everyone's pins, read-only and attributed, so nobody reports the same thing
+four times.
+
+Worker destination only (Discord is write-only). Two matching values:
+
+```bash
+wrangler secret put TYREKICK_REVIEW_KEY    # on your worker
+```
+
+```html
+<script … data-project-name="my-prototype" data-review-key="the-same-value"></script>
+```
+
+**The trade, stated plainly:** that key ships in your page source, so it is
+public to anyone holding the review link. Turning this on means *anyone who can
+open the prototype can read every comment left on it, including reviewer names.*
+There is no finer-grained scoping available — reviewers never log in, which is
+the point of the tool. So:
+
+- **Private link to people you trust:** the trade is fine. This is the case it
+  was built for.
+- **Genuinely public URL:** leave it off. You would be publishing your
+  reviewers' comments to strangers, and any spam that arrives becomes visible
+  to every visitor rather than just to you.
+
+Declining a comment withdraws it from everyone's page, which is the moderation
+lever if noise does arrive. Rotate the worker secret to revoke access entirely.
+Full route details in
+[`destinations/cloudflare`](../destinations/cloudflare/README.md).
+
 ## Protecting a public deployment
 
 The webhook URL ships in page source **by design** — Tyrekick refuses to

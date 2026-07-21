@@ -47,6 +47,7 @@ button:focus-visible,textarea:focus-visible,input:focus-visible,a:focus-visible{
 .pin.sent{opacity:1}
 .pin.failed{opacity:1}
 .pin.failed span{background:var(--tk-flag);color:#fff}
+.pin.foreign span{background:var(--tk-paper);color:var(--tk-ink);box-shadow:inset 0 0 0 1.5px var(--tk-accent),0 1px 4px rgba(0,0,0,.35)}
 .pin.resolved span{background:var(--tk-ok);color:#fff}
 .pin.declined span{background:var(--tk-line);color:var(--tk-ink)}
 :host(:not(.tk-engaged)) .pin{opacity:.45}
@@ -96,6 +97,8 @@ button:focus-visible,textarea:focus-visible,input:focus-visible,a:focus-visible{
 .entry-go{display:flex;gap:10px;width:100%;text-align:left;background:transparent;border:0;padding:0;font:inherit;font-size:13px;color:var(--tk-ink)}
 .entry .n{flex:none;width:22px;height:22px;border-radius:4px;background:var(--tk-accent);color:var(--tk-accent-ink);font-family:var(--tk-mono);font-size:11px;font-weight:600;letter-spacing:-.01em;display:flex;align-items:center;justify-content:center}
 .entry.failed .n{background:var(--tk-flag);color:#fff}
+.entry.foreign{background:var(--tk-surface2)}
+.entry.foreign .n{background:var(--tk-paper);color:var(--tk-ink);box-shadow:inset 0 0 0 1.5px var(--tk-accent)}
 .entry.resolved .n{background:var(--tk-ok);color:#fff}
 .entry.declined .n{background:var(--tk-line);color:var(--tk-ink)}
 .entry.resolved .meta{color:var(--tk-ok);opacity:1}
