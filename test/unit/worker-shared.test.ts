@@ -214,6 +214,42 @@ describe("worker GET /shared", () => {
     expect(res.status).toBe(405);
   });
 
+  it("answers GET / with a health summary so a pasted worker URL isn't a bare 405", async () => {
+    const env = { FEEDBACK: fakeKV() } as never;
+    const res = await worker.fetch(get("https://w.test/"), env, ctx as never);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.service).toBe("tyrekick");
+    expect(body.routes).toContain("POST /feedback");
+  });
+
+  it("never reveals whether the secrets are configured", async () => {
+    // Same root response configured and unconfigured: no oracle for whether
+    // TYREKICK_TOKEN / TYREKICK_REVIEW_KEY are set on this deployment.
+    const bare = { FEEDBACK: fakeKV() } as never;
+    const armed = {
+      FEEDBACK: fakeKV(),
+      TYREKICK_TOKEN: "t",
+      TYREKICK_REVIEW_KEY: "rk",
+      DISCORD_WEBHOOK: "https://discord.test/hook",
+    } as never;
+    const a = await (await worker.fetch(get("https://w.test/"), bare, ctx as never)).text();
+    const b = await (await worker.fetch(get("https://w.test/"), armed, ctx as never)).text();
+    expect(a).toBe(b);
+    expect(a).not.toContain("discord.test");
+  });
+
+  it("still rejects other methods on the root", async () => {
+    const env = { FEEDBACK: fakeKV() } as never;
+    const res = await worker.fetch(
+      new Request("https://w.test/", { method: "DELETE" }),
+      env,
+      ctx as never,
+    );
+    expect(res.status).toBe(405);
+  });
+
   it("leaves the token-gated management surface alone", async () => {
     // A review key must NOT open /feedback — that one grants write/triage.
     const env = { FEEDBACK: fakeKV([record()]), TYREKICK_REVIEW_KEY: "rk-secret" } as never;
