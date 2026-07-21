@@ -14,6 +14,11 @@ wrangler.local.toml
 docs/blog.md
 docs/STATUS.md
 
+# Local agent tooling writes this file wholesale (it is 100% vexp instructions,
+# not project guidance). Ignored so it can never be committed into a public
+# repo and tell a contributor's agent to use a daemon they don't have.
+.github/copilot-instructions.md
+
 # Regenerable film outputs (recorder writes these; only demo.gif is committed)
 docs/demo-hero.gif
 docs/demo-video.gif

@@ -33,7 +33,7 @@
     "e2e": "node build.mjs && playwright test",
     "size": "node build.mjs && node scripts/check-size.mjs",
     "clean:vexp": "node scripts/strip-local-tooling.mjs",
-    "check:clean": "grep -rliq vexp AGENTS.md README.md llms.txt docs mcp/README.md destinations && { echo 'FAIL: local tooling (vexp) block found in shared docs — it would ship to every consumer.'; echo 'Fix: npm run clean:vexp'; exit 1; } || exit 0",
+    "check:clean": "git ls-files -z AGENTS.md README.md llms.txt docs mcp/README.md destinations .github | xargs -0 grep -liq vexp && { echo 'FAIL: local tooling (vexp) block found in a TRACKED shared doc — it would ship to every consumer.'; echo 'Fix: npm run clean:vexp'; exit 1; } || exit 0",
     "prepublishOnly": "npm run check:clean && npm run typecheck && npm run build && npm run size && npm test"
   },
   "devDependencies": {
