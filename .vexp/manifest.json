@@ -3,7 +3,7 @@
     "AGENTS.md": "ceb9e2c30480f3815f6a6d70028128bbafbc2ec06044ee589c810f878313786f",
     "CHANGELOG.md": "a961eac62616bf3bf1d488485029f979fce4187f0b2a931df20b1e153ee2c01f",
     "CONTRACT.md": "c3838d1e61103b4edf5c65b095e1481746b0e29c1bc00e7c121321f90747ec38",
-    "README.md": "d8264bd596bf60d9ae498981d91be34d0ed8d249d3983e70507bcb20df1a2cb0",
+    "README.md": "e0db656e101d47b84204a051a3deb987ecfbd0f8bbcbf3c9cd927474faf63fd6",
     "bin/cli.mjs": "ba193b3e7c1a76bc8668c59c95f72de2d2ae591a4f0d602596c8f34928c06849",
     "bin/lib.mjs": "0245e75fe21092a666f264e00da85053bfe5515191f0ab136c0ad04eeba5cbf2",
     "bin/tui.mjs": "eb6fbf9b3a95425587aee4f17ef236b20dc405ba71d54781e2a317da2c02cb96",
@@ -41,8 +41,8 @@
     "scripts/README.md": "6d09aff0e6d8be0f4c96b94a2b3cf12790c4054cc27e211a83de41c7b2075061",
     "scripts/record-demo.mjs": "eee5a11eef671a92ff3424ea81c5ac5b4db23467bcc8dc73eb509747634aa3ff",
     "security-review-forge-phishing.md": "e2df0a5a62f2c614cf1c86f448914e43eee39e61eee34c10b0e0264de12a1f66",
-    "skills/make-reviewable/SKILL.md": "5f5bb947dcf26f646b29aff76279014ac1bd3d4938366d1a1a30bb4baa0f76d5",
-    "src/auto.ts": "64fd63d2327f621f6d868cc372ef187326a9d1ffc2bcf1762d71ace85ab7bb63",
+    "skills/make-reviewable/SKILL.md": "f59c2024c458da843cc86b0461ce52c4b37290b491b91a497aca0e3f0f4325ad",
+    "src/auto.ts": "5bb0230a19e63aa6bd74a3199260c7bfee7b161b8d0288351b9ba7006703809a",
     "src/capture/anchor.ts": "968f6b1a24f18b71280b47ad3e525ae45f4ecd9bdff1a6cdc5a7367ba0fa799e",
     "src/capture/context.ts": "c77530ca45b9f07e7fb5ddb82ce6e3da73f172aa02e4c3b518517ae3297eb549",
     "src/capture/errors.ts": "85a978c5e8d60b3ba66173490ac63b092437699f5e1335e1bb9c42302009aaed",
@@ -69,7 +69,7 @@
     "test/unit/anchor.test.ts": "94f0aec1b8ae3156eeefd2ff8f248407b00deb7261aa340c4053f1a10e007f4a",
     "test/unit/chip.test.ts": "20e304287f7964e492389bdbbea16fd3fc99a748e8f5ab357871363213925c95",
     "test/unit/cli-lib.test.ts": "9cd4e73aafcac969c968b4b2f84540eba0ee83cec343d9d88227b27fd69b9688",
-    "test/unit/config.test.ts": "f69d936acd3c33e34305c2f266e1b4a170c62b3c1d6bb2985252e415ccaa7b65",
+    "test/unit/config.test.ts": "3b000b0721c9747a7820bac396c48687b7d5ac217899df60cf7648af2d14a655",
     "test/unit/element.test.ts": "a0c4ac75e68df8d6cb14c7b163f05c22524eef2eadbb3c2b27eafa18ba746b61",
     "test/unit/errors.test.ts": "c9c515844dd8e8ae29513d8ea17ccc3ca1111562afd91069214cf08c715cf1cd",
     "test/unit/helpers.ts": "525a5b59874045f241f0bc489ea80f938d8581968458dc5acd5ac1b9332c1c68",
@@ -84,13 +84,13 @@
     "test/unit/worker-shared.test.ts": "ef4a2677b63ee2d7529162a60018eb2be8d97064152a4ff8e649eabec2f228f3",
     "vitest.config.ts": "9607be0c9432c9939a3248b44f0ce942582d1318cd551ed3c68f590dad839405"
   },
-  "indexed_at_commit": "f17bc580c86187d83bf0a1acb9eabb7147f49553",
-  "indexed_at_timestamp": "2026-07-21T07:21:44.759672+00:00",
+  "indexed_at_commit": "9560f0641e02284f1af7289fa6b01bc6b42206cf",
+  "indexed_at_timestamp": "2026-07-21T07:49:17.294299+00:00",
   "schema_version": 3,
   "stats": {
-    "total_edges": 657,
+    "total_edges": 663,
     "total_files": 83,
-    "total_nodes": 519
+    "total_nodes": 522
   },
   "vexp_version": "2.2.3"
 }

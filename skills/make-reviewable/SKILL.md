@@ -172,6 +172,28 @@ it's hosted — Pages project / tunnel / dev server), the destination URL,
 transport, worker name, and where the token lives (wrangler secret — do NOT
 write the token itself into any committed file).
 
+For **worker destinations**, also write a `.tyrekick.json` at the project root so
+dashboards (e.g. dev-hub's Review panel) can discover the feedback Worker and
+surface open comments:
+
+```json
+{
+  "slug": "<project-slug>",
+  "workerUrl": "<worker base URL, no /feedback>",
+  "liveUrl": "<review URL>"
+}
+```
+
+It holds no secret, but treat it as **per-deployment config, not shared code**:
+if the repo is cloned and run by others, gitignore `.tyrekick.json` (and gate the
+widget mount behind an env var) so a stranger's app doesn't post to this Worker
+and their clone doesn't inherit this deployment's store. Commit it only for a
+private/single-owner repo where that association is wanted. A dashboard reads the
+token separately from its own server-side env (`TYREKICK_TOKEN`, or
+`TYREKICK_TOKEN_<slug>` for a per-project override), never from this file. Skip
+`.tyrekick.json` for Discord-only taster destinations, since there is no
+queryable Worker for a dashboard to read back.
+
 ## 6. Draft the ask (this is the actual product)
 
 The widget collects; the ASK summons. Always end by producing a

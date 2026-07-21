@@ -143,6 +143,40 @@ describe("data-* auto-init parsing", () => {
     clickPoint(200, 300);
     expect(getShadow().textContent || "").toMatch(/Frontier Operations/i);
   });
+
+  it("auto-inits from window.tyrekickConfig when currentScript is null (async/framework loaders)", async () => {
+    // No fakeScript: currentScript stays null, simulating next/script / dynamic import.
+    (globalThis as { tyrekickConfig?: unknown }).tyrekickConfig = {
+      webhook: "https://example.test/global",
+      appVersion: "3.3.3",
+      accent: "#00ff00",
+    };
+    try {
+      const mod = await import("../../src/auto");
+      destroyFn = (mod as { destroy?: () => void }).destroy;
+      expect(
+        getShadow().querySelector('[aria-label="Give feedback"]'),
+      ).not.toBeNull();
+      expect(shadowText()).toContain("#00ff00");
+    } finally {
+      delete (globalThis as { tyrekickConfig?: unknown }).tyrekickConfig;
+    }
+  });
+
+  it("falls back to a [data-webhook] script tag when currentScript is null", async () => {
+    // A tag is present in the DOM but is NOT currentScript (async injection).
+    const s = document.createElement("script");
+    s.setAttribute("data-webhook", "https://example.test/tag");
+    s.setAttribute("data-app-version", "4.4.4");
+    s.setAttribute("data-accent", "#0000ff");
+    document.head.appendChild(s);
+    const mod = await import("../../src/auto");
+    destroyFn = (mod as { destroy?: () => void }).destroy;
+    expect(
+      getShadow().querySelector('[aria-label="Give feedback"]'),
+    ).not.toBeNull();
+    expect(shadowText()).toContain("#0000ff");
+  });
 });
 
 describe("accent auto-contrast (accentInk)", () => {
