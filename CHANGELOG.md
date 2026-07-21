@@ -3,6 +3,33 @@
 Notable changes to the `tyrekick` widget. The MCP server (`tyrekick-mcp`) is
 versioned separately; see [`mcp/`](mcp/).
 
+## Unreleased
+
+- **SPA route changes reset per-route pins.** Pin/draft/receipt storage is keyed
+  by `location.pathname`, but `restore()` only ran once at `init()`, so on a
+  client-routed app (history.pushState, no reload) the previous view's pins
+  lingered over the next route. The widget now follows navigation (wrapped
+  `pushState`/`replaceState` + `popstate`) and, on a real pathname change, tears
+  down the old pins, reloads storage for the new route, and reprojects — reverted
+  cleanly in `destroy()`. Query/hash-only changes are ignored.
+- **CLI grows a management surface.** Bare `npx tyrekick` now opens a
+  zero-dependency, arrow-key **management menu** with a live status dashboard
+  (widget / worker / MCP). New subcommands:
+  - `status` — one-shot dashboard.
+  - `disable` / `enable` — remove or restore the widget while leaving the
+    worker, token, MCP registration, and **all feedback data** untouched
+    (reversible; the exact tag is stashed in `.tyrekick.disabled`).
+  - `remove` — uninstall local wiring (strip the tag + `claude mcp remove`),
+    keeping cloud data by default; `remove --teardown` additionally deletes the
+    Cloudflare worker + KV + token secret, guarded by a type-the-project-name
+    confirmation because it destroys all feedback.
+  - `init` is unchanged. CLI logic split into `bin/lib.mjs` + `bin/tui.mjs`.
+- **Framework-aware detection.** `status`/`disable`/`remove` now also detect a
+  framework/ESM install (the `import { init } from "tyrekick"` mount) — reporting
+  the file:line and reading config from the `init({…})` call. Because that mount
+  lives in user-owned source, the CLI gives precise removal guidance rather than
+  auto-editing framework code (which could break the build).
+
 ## 0.3.2
 
 - **Receipts — closure reaches the reviewer.** A resolved comment's pin turns
