@@ -4,7 +4,7 @@
 AI-built prototype — and let your coding agent act on what they say.
 
 [![npm version](https://img.shields.io/npm/v/tyrekick?label=npm)](https://www.npmjs.com/package/tyrekick)
-[![gzip size](https://img.shields.io/badge/gzip-~13%20KB-brightgreen)](README.md#how-it-works)
+[![gzip size](https://img.shields.io/badge/gzip-~14%20KB-brightgreen)](README.md#how-it-works)
 [![license: MIT](https://img.shields.io/npm/l/tyrekick)](LICENSE)
 [![MCP server](https://img.shields.io/badge/MCP-server-8b5cf6)](mcp/)
 
@@ -30,7 +30,7 @@ You never retype feedback into a prompt again.
 └──────────────────┘           └────────────────────┘           └─────────────────┘
 ```
 
-The widget is a single ~12 KB (gzipped) script with zero dependencies, rendered in Shadow DOM so it can't fight your page. There is no Tyrekick backend, no accounts, and nothing phones home — feedback POSTs straight from the reviewer's browser to a destination **you** own. It exists for the moment an agent-built prototype needs more than one pair of eyes: instead of pasting screenshots into group chats and losing the replies, every comment arrives structured, versioned, and pinned to the exact spot.
+The widget is a single ~14 KB (gzipped) script with zero dependencies, rendered in Shadow DOM so it can't fight your page. There is no Tyrekick backend, no accounts, and nothing phones home — feedback POSTs straight from the reviewer's browser to a destination **you** own. It exists for the moment an agent-built prototype needs more than one pair of eyes: instead of pasting screenshots into group chats and losing the replies, every comment arrives structured, versioned, and pinned to the exact spot.
 
 Pins stay on the page after you leave a comment (dimmed until you interact) — hover one to see its text, click it to open the thread right there, with reply, retry, and discard actions at the pin. Reviewers also get a comment drawer (a right-hand overview listing every pin with its text — click one to jump back to that spot, or hide pins entirely), draft recovery, and full keyboard/touch support (Cmd/Ctrl+Enter sends). With `persist: true` (the default), localStorage is only used to recover unsent work across reloads — comments that couldn't be delivered come back after a reload with Retry and Discard buttons, re-pinned to the element they were about even if the window size changed.
 

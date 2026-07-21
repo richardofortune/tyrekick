@@ -3,7 +3,7 @@
     "AGENTS.md": "4d4d28b681c6a9c041ec80825932772a50a5df904c86b6efce51df5f818a9536",
     "CHANGELOG.md": "a961eac62616bf3bf1d488485029f979fce4187f0b2a931df20b1e153ee2c01f",
     "CONTRACT.md": "c3838d1e61103b4edf5c65b095e1481746b0e29c1bc00e7c121321f90747ec38",
-    "README.md": "e0db656e101d47b84204a051a3deb987ecfbd0f8bbcbf3c9cd927474faf63fd6",
+    "README.md": "3d68184d53d93e01d34a6487724e762caecf26b797ba06204496a970a030b6e9",
     "bin/cli.mjs": "ba193b3e7c1a76bc8668c59c95f72de2d2ae591a4f0d602596c8f34928c06849",
     "bin/lib.mjs": "0245e75fe21092a666f264e00da85053bfe5515191f0ab136c0ad04eeba5cbf2",
     "bin/tui.mjs": "eb6fbf9b3a95425587aee4f17ef236b20dc405ba71d54781e2a317da2c02cb96",
@@ -39,7 +39,9 @@
     "mcp/vitest.config.ts": "07f19680449649fe474545613d886e276045ba1c4144467a58f725a93525dbbf",
     "playwright.config.ts": "9cdac078b4a89f20776c9221131af9d78af0a41d61f653f986ca5f42ccba6452",
     "scripts/README.md": "6d09aff0e6d8be0f4c96b94a2b3cf12790c4054cc27e211a83de41c7b2075061",
+    "scripts/check-size.mjs": "b5b53ac2f1ad66cb5ff151ba35c7df26ceafeeddfc66e852f46a400ca7b00df1",
     "scripts/record-demo.mjs": "eee5a11eef671a92ff3424ea81c5ac5b4db23467bcc8dc73eb509747634aa3ff",
+    "scripts/strip-local-tooling.mjs": "b4137ff866ddb5d15ccdb9bee8c2ee972bbd4f835aea4c471fd249569913e33d",
     "security-review-forge-phishing.md": "e2df0a5a62f2c614cf1c86f448914e43eee39e61eee34c10b0e0264de12a1f66",
     "skills/make-reviewable/SKILL.md": "f59c2024c458da843cc86b0461ce52c4b37290b491b91a497aca0e3f0f4325ad",
     "src/auto.ts": "5bb0230a19e63aa6bd74a3199260c7bfee7b161b8d0288351b9ba7006703809a",
@@ -84,13 +86,13 @@
     "test/unit/worker-shared.test.ts": "b77c1d08d14c4eee1d06ae32ab9b71e4d9f6762eb8495dca40caf41d53c41d57",
     "vitest.config.ts": "9607be0c9432c9939a3248b44f0ce942582d1318cd551ed3c68f590dad839405"
   },
-  "indexed_at_commit": "ed14e6ec9c23508ae87df27d469002dfc6bebc09",
-  "indexed_at_timestamp": "2026-07-21T08:26:11.364528+00:00",
+  "indexed_at_commit": "97811aeabf6210ab5be0edae2539456b268b3553",
+  "indexed_at_timestamp": "2026-07-21T08:32:31.909938+00:00",
   "schema_version": 3,
   "stats": {
     "total_edges": 657,
-    "total_files": 83,
-    "total_nodes": 517
+    "total_files": 85,
+    "total_nodes": 519
   },
   "vexp_version": "2.2.3"
 }

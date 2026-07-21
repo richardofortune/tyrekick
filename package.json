@@ -31,9 +31,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "node build.mjs && playwright test",
-    "size": "node build.mjs && node -e \"import('node:zlib').then(z=>import('node:fs').then(f=>{const b=f.readFileSync('dist/tyrekick.js');const g=z.gzipSync(b).length;console.log('tyrekick.js gzipped:',g,'bytes ('+(g/1024).toFixed(1)+' KB)');if(g>30720){console.error('FAIL: exceeds 30720 byte budget');process.exit(1)}console.log('OK: within 30 KB budget')}))\"",
-    "check:clean": "grep -rliq vexp AGENTS.md README.md llms.txt docs mcp/README.md destinations && { echo 'FAIL: local tooling (vexp) block found in shared docs — strip it before publishing'; exit 1; } || exit 0",
-    "prepublishOnly": "npm run check:clean && npm run typecheck && npm run build && npm test"
+    "size": "node build.mjs && node scripts/check-size.mjs",
+    "clean:vexp": "node scripts/strip-local-tooling.mjs",
+    "check:clean": "grep -rliq vexp AGENTS.md README.md llms.txt docs mcp/README.md destinations && { echo 'FAIL: local tooling (vexp) block found in shared docs — it would ship to every consumer.'; echo 'Fix: npm run clean:vexp'; exit 1; } || exit 0",
+    "prepublishOnly": "npm run check:clean && npm run typecheck && npm run build && npm run size && npm test"
   },
   "devDependencies": {
     "@playwright/test": "^1.48.0",
