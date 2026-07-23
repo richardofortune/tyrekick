@@ -38,6 +38,8 @@ Pins stay on the page after you leave a comment (dimmed until you interact) — 
 
 **Full documentation** lives in [`docs/`](docs/): [quickstart](docs/QUICKSTART.md) · [getting started](docs/getting-started.md) · [configuration](docs/configuration.md) · [the reviewer experience](docs/reviewing.md) · [destinations](docs/destinations.md) · [the agent loop](docs/agent-loop.md) · [payload reference](docs/payload.md) · [troubleshooting & FAQ](docs/troubleshooting.md)
 
+**Sharing a prototype publicly?** Start with [taking a prototype public](docs/going-public.md), then the per-capability guides: [rate limiting](docs/rate-limiting.md) · [shared review](docs/shared-review.md) · [AI auto-reply](docs/ai-auto-reply.md).
+
 ## 60-second quickstart (Discord)
 
 The fastest path is a Discord channel you control — the taster that proves
