@@ -20,6 +20,7 @@ import {
   listFeedbackTool,
   triageFeedbackTool,
   resolveFeedbackTool,
+  retrospectiveTool,
 } from "./tools.js";
 
 // Validate env BEFORE connecting — fail fast with a clear message.
@@ -132,6 +133,25 @@ server.registerTool(
     },
   },
   async (args) => feedbackStatsTool(client, args),
+);
+
+server.registerTool(
+  "retrospective",
+  {
+    title: "Retrospective",
+    description:
+      "The AI feedback loop: analyse your own feedback history for patterns — what " +
+      "reviewers keep flagging (intent buckets), what you did about it (resolved vs " +
+      "declined vs open — the hit/miss axis), recurring blind spots, and regressions " +
+      "by app_version. Computed locally over your own worker; no feedback content leaves. " +
+      "Use it to see where your AI-built prototype keeps missing and improve how you brief your agent.",
+    inputSchema: {
+      project: z.string().optional().describe("Scope the retrospective to one project_name"),
+      since: z.string().optional().describe("Only include feedback created at/after this ISO-8601 timestamp"),
+      limit: z.number().int().min(1).max(200).optional().describe("Max items to analyse (default 200)"),
+    },
+  },
+  async (args) => retrospectiveTool(client, args),
 );
 
 async function main(): Promise<void> {

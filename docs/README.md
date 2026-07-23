@@ -13,6 +13,7 @@ heading, and any page errors attached.
 | [The reviewer experience](reviewing.md) | What reviewers see and can do: pins, threads, the drawer, keyboard and touch |
 | [Destinations](destinations.md) | Discord webhook vs. your own Cloudflare Worker, the worker's REST API, and protecting a public deployment |
 | [The agent loop (MCP)](agent-loop.md) | Setting up `tyrekick-mcp`, the five tools, review modes, and the passive/active operating patterns |
+| [Retrospective](retrospective.md) | The coaching read on your own feedback history — what keeps getting flagged, resolved vs. declined, blind spots, regressions — computed entirely at your edge |
 
 ### Setup guides for a public share
 
