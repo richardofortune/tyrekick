@@ -109,6 +109,7 @@ export function parseConfig(block) {
     transport: attr("transport") || "json",
     project: attr("project-name"),
     appVersion: attr("app-version"),
+    reviewKey: attr("review-key"),
     src: src ? src[1] : null,
   };
 }
@@ -134,6 +135,7 @@ export function parseEsmConfig(src) {
     project: grab("projectName"),
     appVersion: grab("appVersion"),
     transport: grab("transport") || "json",
+    reviewKey: grab("reviewKey"),
   };
 }
 
@@ -243,18 +245,82 @@ export function mcpStatus() {
   }
 }
 
+/**
+ * Parse the two Workers Rate Limiting bindings out of a wrangler config's text.
+ * Handles both the [[unsafe.bindings]] form (`name = "…"`) and the modern
+ * [[ratelimit]] form (`binding = "…"`). Pure — no I/O — so it's unit-tested
+ * over fixture strings. Returns { ingest, read, configured }.
+ */
+export function parseRateLimit(toml) {
+  const grab = (id) => {
+    const re = new RegExp(
+      `(?:name|binding)\\s*=\\s*"${id}"[\\s\\S]{0,240}?simple\\s*=\\s*\\{[^}]*?limit\\s*=\\s*(\\d+)[^}]*?period\\s*=\\s*(\\d+)`,
+      "i",
+    );
+    const m = toml.match(re);
+    return m ? { limit: Number(m[1]), period: Number(m[2]) } : null;
+  };
+  const ingest = grab("INGEST_LIMITER");
+  const read = grab("READ_LIMITER");
+  return { ingest, read, configured: Boolean(ingest || read) };
+}
+
+/** Read the first local wrangler config and parse its rate-limit bindings. */
+function readRateLimit() {
+  const path = findWrangler();
+  if (!path) return { found: false, configured: false, ingest: null, read: null };
+  try {
+    return { found: true, ...parseRateLimit(readFileSync(path, "utf8")) };
+  } catch {
+    return { found: false, configured: false, ingest: null, read: null };
+  }
+}
+
+/**
+ * Best-effort probe of which secrets the deployed worker has — the only way to
+ * know whether AI auto-reply / shared review are wired on the WORKER side, since
+ * secrets never appear in the config. Only meaningful where a local wrangler
+ * config exists (i.e. you have the worker here). Degrades to { known:false } on
+ * anything — no config, wrangler missing, not authed. Never prompts (stdin
+ * ignored), so it can't hang on a login flow.
+ */
+async function probeWorkerSecrets() {
+  const cfg = findWrangler();
+  if (!cfg) return { known: false, names: new Set() };
+  try {
+    const out = execSync(`npx --no-install wrangler secret list --config ${cfg}`, {
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 15000,
+    }).toString();
+    const arr = JSON.parse(out.slice(out.indexOf("["), out.lastIndexOf("]") + 1));
+    return { known: true, names: new Set(arr.map((x) => x && x.name).filter(Boolean)) };
+  } catch {
+    return { known: false, names: new Set() };
+  }
+}
+
 export async function gatherStatus() {
   const widget = findWidget();
   const cfg = widget.config || {};
   const transport = cfg.transport || "json";
   const worker = transport === "json" && cfg.webhook ? await workerReachable(cfg.webhook) : null;
   const mcp = mcpStatus();
+  // Public-share posture — worker (json) transport only: shared review from the
+  // widget key, rate limiting from the local wrangler config, and (best-effort)
+  // which secrets the worker actually has.
+  const reviewKey = cfg.reviewKey || null;
+  const rateLimit =
+    transport === "json" ? readRateLimit() : { found: false, configured: false, ingest: null, read: null };
+  const secrets = transport === "json" ? await probeWorkerSecrets() : { known: false, names: new Set() };
   return {
     widget,
     cfg,
     transport,
     worker,
     mcp,
+    reviewKey,
+    rateLimit,
+    secrets,
     project: cfg.project || basename(resolve(".")),
   };
 }
@@ -276,7 +342,71 @@ export function renderStatus(s) {
   else if (s.mcp.registered) rows.push(["MCP", s.mcp.hasToken ? "✔ registered (token set)" : "✔ registered"]);
   else rows.push(["MCP", "✗ not registered"]);
 
+  // Public-share posture — only meaningful on the worker (json) transport.
+  if (s.transport === "json") {
+    // Shared review: driven by the widget key (the client half that turns it
+    // on). If we could read the worker's secrets and it has none, flag the
+    // mismatch — the widget would send a key the worker rejects.
+    if (s.reviewKey) {
+      const workerMissing =
+        s.secrets && s.secrets.known && !s.secrets.names.has("TYREKICK_REVIEW_KEY");
+      rows.push([
+        "Shared review",
+        workerMissing
+          ? "⚠ widget sends a key but the worker has none — /shared will 401"
+          : "⚠ ON — anyone with the link can read every comment",
+      ]);
+    } else {
+      rows.push(["Shared review", "off — reviewers see only their own pins"]);
+    }
+
+    // Rate limiting: from the local wrangler config, when there is one. Omitted
+    // for a widget-only project where the worker config isn't present locally.
+    if (s.rateLimit && s.rateLimit.found) {
+      if (s.rateLimit.configured) {
+        const bits = [];
+        if (s.rateLimit.ingest) bits.push(`${s.rateLimit.ingest.limit}/${s.rateLimit.ingest.period}s ingest`);
+        if (s.rateLimit.read) bits.push(`${s.rateLimit.read.limit}/${s.rateLimit.read.period}s read`);
+        rows.push(["Rate limit", `✔ on — ${bits.join(", ")}`]);
+      } else {
+        rows.push(["Rate limit", "✗ off — add it before a public share"]);
+      }
+    }
+
+    // AI auto-reply: only knowable via the secret probe (no config artifact).
+    if (s.secrets && s.secrets.known) {
+      rows.push([
+        "AI reply",
+        s.secrets.names.has("ANTHROPIC_API_KEY")
+          ? "✔ on · confirm an Anthropic spend limit is set"
+          : "off — set ANTHROPIC_API_KEY on the worker to enable",
+      ]);
+    } else if (s.rateLimit && s.rateLimit.found) {
+      // The worker config is here but we couldn't read its secrets.
+      rows.push(["AI reply", "? worker-side — run `wrangler secret list` to confirm"]);
+    }
+  }
+
   return rows;
+}
+
+/**
+ * One-line public-share readiness verdict, printed under the status rows. Flags
+ * the dangerous combo (shared review on = every comment is public) and the
+ * missing guard (no rate limiting), plus the spend-limit reminder when AI reply
+ * is on. Returns null when nothing needs flagging. Pure.
+ */
+export function readinessNote(s) {
+  if (s.transport !== "json") return null; // worker-only concepts
+  const items = [];
+  if (s.reviewKey)
+    items.push("shared review is ON — only for a private link, never a public URL");
+  if (s.rateLimit && s.rateLimit.found && !s.rateLimit.configured)
+    items.push("no rate limiting — add it before sharing publicly");
+  if (s.secrets && s.secrets.known && s.secrets.names.has("ANTHROPIC_API_KEY"))
+    items.push("AI auto-reply is on — confirm an Anthropic workspace spend limit");
+  if (!items.length) return null;
+  return "Before a public share:\n" + items.map((w) => `    · ${w}`).join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -337,7 +467,9 @@ export function printMcpAdd(webhook) {
 export async function cmdStatus() {
   const s = await gatherStatus();
   console.log(`\n  tyrekick ${VERSION}  ·  ${s.project}\n`);
-  for (const [k, v] of renderStatus(s)) console.log(`  ${k.padEnd(7)} ${v}`);
+  for (const [k, v] of renderStatus(s)) console.log(`  ${k.padEnd(13)} ${v}`);
+  const note = readinessNote(s);
+  if (note) console.log(`\n  ${note}`);
   console.log("");
 }
 
