@@ -62,6 +62,14 @@ export interface Pin {
   /** Closure state pulled back from the worker, or null while open/unknown. */
   receipt: { status: "resolved" | "declined"; note: string | null; at: string | null } | null;
   /**
+   * A one-sentence AI acknowledgement of this comment, pulled back from the
+   * worker's /receipts route, or null while none. Runtime-only exactly like
+   * `receipt`: fetched every load, NEVER persisted to localStorage. It is a
+   * thread message, not a status change — it never touches `receipt` or the
+   * pin's open/closed state.
+   */
+  aiReply: string | null;
+  /**
    * True when this pin is SOMEONE ELSE's comment, pulled from the worker's
    * /shared view (reviewKey set). Foreign pins are strictly read-only: they
    * are never persisted to localStorage, never retried or discarded, and never
@@ -588,6 +596,7 @@ function restoreReceipts(): void {
         fy: typeof d.ey === "number" ? d.ey : null,
         deliveredId: d.d,
         receipt: null,
+        aiReply: null,
         foreign: false,
         anchor: upgradeAnchor(d.a),
         body: typeof d.b === "string" ? d.b : "",
@@ -628,11 +637,20 @@ function checkReceipts(): void {
         status?: unknown;
         resolved_at?: unknown;
         resolution_note?: unknown;
+        ai_reply?: unknown;
       }>) {
         if (!r || typeof r.id !== "string") continue;
-        if (r.status !== "resolved" && r.status !== "declined") continue;
         const pin = rt.pins.find((p) => p.deliveredId === r.id);
         if (!pin) continue;
+        // AI acknowledgement is a THREAD MESSAGE, not a status change: apply it
+        // whatever the status ("open" included) and never let it touch
+        // pin.receipt or the pin's open/closed state.
+        const aiReply = typeof r.ai_reply === "string" ? r.ai_reply : null;
+        if (pin.aiReply !== aiReply) {
+          pin.aiReply = aiReply;
+          changed = true;
+        }
+        if (r.status !== "resolved" && r.status !== "declined") continue;
         const note = typeof r.resolution_note === "string" ? r.resolution_note : null;
         const at = typeof r.resolved_at === "string" ? r.resolved_at : null;
         if (pin.receipt && pin.receipt.status === r.status && pin.receipt.note === note) continue;
@@ -766,6 +784,7 @@ function mergeShared(list: SharedPin[]): boolean {
       fy: anchor.selector ? 0.5 : null,
       deliveredId: s.id,
       receipt,
+      aiReply: null,
       foreign: true,
       anchor,
       body,
@@ -913,6 +932,7 @@ function restore(): void {
             fy: typeof d.ey === "number" ? d.ey : null,
             deliveredId: null,
             receipt: null,
+            aiReply: null,
             foreign: false,
             anchor: upgradeAnchor(d.a),
             body,

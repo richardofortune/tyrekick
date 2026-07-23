@@ -88,6 +88,11 @@ claude mcp add tyrekick \
   -- npx tyrekick-mcp
 ```
 
+> The worker also supports an optional AI auto-reply (`ANTHROPIC_API_KEY`
+> secret, off by default) that posts one short, tool-less acknowledgement per
+> comment without ever changing its status — see [CONTRACT.md](CONTRACT.md)
+> for the guardrails.
+
 ### Review modes — decide BEFORE actioning anything
 
 Feedback has a triage ladder: `open` (untriaged) → `approved` / `declined` →

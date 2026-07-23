@@ -261,3 +261,96 @@ describe("worker GET /shared", () => {
     expect(res.status).toBe(401);
   });
 });
+
+/** A rate-limiter binding that always allows or always blocks, and records keys. */
+function fakeLimiter(allow: boolean) {
+  const keys: string[] = [];
+  return {
+    keys,
+    async limit({ key }: { key: string }) {
+      keys.push(key);
+      return { success: allow };
+    },
+  };
+}
+
+const postFeedback = (headers: Record<string, string> = {}) =>
+  new Request("https://w.test/feedback", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...headers },
+    body: JSON.stringify({ schema: 2, body: "hi", project_name: "p" }),
+  });
+
+describe("worker rate limiting (open routes only)", () => {
+  const IP = { "CF-Connecting-IP": "203.0.113.7" };
+
+  it("429s an over-limit ingest, keyed on the client IP", async () => {
+    const limiter = fakeLimiter(false);
+    const env = { FEEDBACK: fakeKV(), INGEST_LIMITER: limiter } as never;
+    const res = await worker.fetch(postFeedback(IP), env, ctx as never);
+    expect(res.status).toBe(429);
+    expect((await res.json()).error).toBe("rate_limited");
+    expect(res.headers.get("Retry-After")).toBe("60");
+    // Must stay CORS-usable — a browser has to be able to read the 429 body.
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    expect(limiter.keys).toEqual(["203.0.113.7"]);
+  });
+
+  it("lets an under-limit ingest straight through to storage", async () => {
+    const env = { FEEDBACK: fakeKV(), INGEST_LIMITER: fakeLimiter(true) } as never;
+    const res = await worker.fetch(postFeedback(IP), env, ctx as never);
+    expect(res.status).toBe(200);
+    expect((await res.json()).ok).toBe(true);
+  });
+
+  it("no limiter binding = route stays open (older deploys unaffected)", async () => {
+    const env = { FEEDBACK: fakeKV() } as never; // no INGEST_LIMITER
+    const res = await worker.fetch(postFeedback(IP), env, ctx as never);
+    expect(res.status).toBe(200);
+  });
+
+  it("does not block when there is no client IP to key on (e.g. local dev)", async () => {
+    // A limiter that would block IS present, but no CF-Connecting-IP header.
+    const limiter = fakeLimiter(false);
+    const env = { FEEDBACK: fakeKV(), INGEST_LIMITER: limiter } as never;
+    const res = await worker.fetch(postFeedback(), env, ctx as never); // no IP header
+    expect(res.status).toBe(200);
+    expect(limiter.keys).toEqual([]); // limiter never consulted without a key
+  });
+
+  it("a limiter that throws must never take the route down (fails open)", async () => {
+    const env = {
+      FEEDBACK: fakeKV(),
+      INGEST_LIMITER: { async limit() { throw new Error("rate limiter unavailable"); } },
+    } as never;
+    const res = await worker.fetch(postFeedback(IP), env, ctx as never);
+    expect(res.status).toBe(200);
+  });
+
+  it("rate-limits the open GET /receipts via READ_LIMITER", async () => {
+    const env = { FEEDBACK: fakeKV(), READ_LIMITER: fakeLimiter(false) } as never;
+    const res = await worker.fetch(
+      get("https://w.test/receipts?ids=aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", IP),
+      env,
+      ctx as never,
+    );
+    expect(res.status).toBe(429);
+  });
+
+  it("does NOT rate-limit the token-gated GET /feedback (the token is the gate)", async () => {
+    // Even with a blocking READ_LIMITER present, the management list is governed
+    // by the token, not the IP limiter — it must not 429.
+    const env = {
+      FEEDBACK: fakeKV([record()]),
+      TYREKICK_TOKEN: "t",
+      READ_LIMITER: fakeLimiter(false),
+      INGEST_LIMITER: fakeLimiter(false),
+    } as never;
+    const res = await worker.fetch(
+      get("https://w.test/feedback", { Authorization: "Bearer t", ...IP }),
+      env,
+      ctx as never,
+    );
+    expect(res.status).toBe(200);
+  });
+});

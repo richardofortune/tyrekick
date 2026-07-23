@@ -35,6 +35,18 @@ A missing `webhook` or `appVersion` throws.
 `persist` and `fields` have no `data-*` equivalent — use the ESM build (or
 `window.Tyrekick.init()` with a config object) if you need to change them.
 
+## Worker-side secrets (not part of `TyrekickConfig`)
+
+Some destination behaviour is configured on the worker itself, not the
+widget, and has no `data-*` attribute at all — it belongs in the
+[destination/worker config](../destinations/cloudflare), not here:
+
+- `TYREKICK_TOKEN` — management-route auth for the MCP/REST loop.
+- `TYREKICK_REVIEW_KEY` — the server-side counterpart of `reviewKey` above.
+- `ANTHROPIC_API_KEY` — optional; turns on a one-line AI acknowledgement per
+  comment (Haiku, no tools, author-only, pin stays open). Unset = feature
+  off. See [CONTRACT.md](../CONTRACT.md) for the guardrails.
+
 ## Delivery behaviour (both transports)
 
 Every submission POSTs with an 8-second timeout and exactly one automatic

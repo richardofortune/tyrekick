@@ -47,3 +47,49 @@ id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
 #
 # Forwarding is fire-and-forget: a Discord outage or rate limit never affects
 # the ingest response the widget sees. Leave unset to disable.
+
+# --- Optional: AI auto-reply (one-line acknowledgement) ----------------------
+# Set an Anthropic API key as a third secret and the worker asks Claude Haiku
+# for ONE short, friendly acknowledgement of each comment, shown only in the
+# author's own thread (rides /receipts) — the pin stays open, nothing is
+# "fixed" or resolved:
+#
+#     wrangler secret put ANTHROPIC_API_KEY
+#
+# Bounded by construction: claude-haiku-4-5, max_tokens 120, NO tools (it can
+# only emit text, never take an action), plus a global daily cap
+# (AI_DAILY_CAP = 500 replies/day). Also set an Anthropic workspace spend
+# limit as the hard backstop — the daily cap is app-level, not a substitute
+# for the account-level ceiling. Leave unset to disable; this is OFF by default.
+
+# --- Optional but RECOMMENDED for a public URL: per-IP rate limiting ----------
+# The open routes (POST /feedback ingest, GET /receipts, GET /shared) are
+# unauthenticated by design so reviewers stay frictionless. On a public link
+# that means anyone can call them — so cap what one IP can cost you.
+#
+# These are Workers Rate Limiting bindings; the worker treats them as OPTIONAL
+# (unset = route stays open, exactly like the secrets above), so you can add
+# them any time and redeploy. `period` must be 10 or 60 (seconds); pick per-IP
+# `limit`s that a real user never hits but a bot does.
+#
+# INGEST_LIMITER guards the WRITE path — the one that actually runs up a bill
+# (KV writes + stored spam). READ_LIMITER guards the open reads (cheaper, but
+# stops scraping). Tune the numbers to your traffic.
+#
+# NOTE on syntax: this uses the broadly-supported `[[unsafe.bindings]]` form
+# (the "unsafe" label just means "binding wrangler doesn't have first-class
+# config for yet" — it deploys a normal rate-limit binding). Wrangler ≥ ~4.11
+# also accepts a cleaner top-level `[[ratelimit]]` block; OLDER wrangler
+# silently DROPS that one (no binding, no rate limiting), so the unsafe form is
+# used here for compatibility. `period` must be 10 or 60 (seconds).
+[[unsafe.bindings]]
+name = "INGEST_LIMITER"
+type = "ratelimit"
+namespace_id = "1001"          # any unique integer per account
+simple = { limit = 15, period = 60 }   # 15 comments/min per IP — generous for a human
+
+[[unsafe.bindings]]
+name = "READ_LIMITER"
+type = "ratelimit"
+namespace_id = "1002"
+simple = { limit = 120, period = 60 }  # 120 reads/min per IP — the widget polls ~2/min

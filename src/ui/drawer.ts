@@ -229,6 +229,14 @@ export function createDrawer(rt: Runtime): Drawer {
       note.textContent = p.receipt.note;
       main.appendChild(note);
     }
+    // AI acknowledgement: a thread message under the comment, never a status
+    // change (the pin stays open — this does not touch p.receipt).
+    if (p.aiReply) {
+      const ai = document.createElement("span");
+      ai.className = "ai-reply";
+      ai.textContent = "🤖 " + p.aiReply;
+      main.appendChild(ai);
+    }
     go.appendChild(main);
 
     if (locatable) {
