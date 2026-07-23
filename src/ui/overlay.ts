@@ -253,6 +253,7 @@ export function createOverlay(rt: Runtime): Overlay {
       fy: rect && rect.h > 0 ? Math.min(Math.max((clientY - rect.y) / rect.h, 0), 1) : null,
       deliveredId: null,
       receipt: null,
+      aiReply: null,
       foreign: false,
       anchor,
       body: "",

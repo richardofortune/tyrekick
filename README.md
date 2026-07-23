@@ -157,6 +157,18 @@ What it does and doesn't do:
   fingerprint, the prototype's page errors, the full URL (share links can carry
   query-string secrets), or your session id.
 
+## AI auto-reply (optional)
+
+Set an Anthropic API key on your worker and each ingested comment gets one
+short, friendly acknowledgement — labelled 🤖, shown only in the reviewer's
+own thread — while the pin stays open (it acknowledges; it never claims to
+fix anything, and never resolves the pin). The model has no tools, so
+nothing inside a comment can make it take an action. Off by default.
+
+```bash
+npx wrangler secret put ANTHROPIC_API_KEY
+```
+
 ## Programmatic / ESM usage
 
 Install from your registry and initialise explicitly (the ESM build does **not** auto-init):

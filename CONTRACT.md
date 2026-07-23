@@ -310,6 +310,51 @@ reviewers. No live presence, no peer-to-peer threading, no conflict resolution
 on-page conversation is how this becomes a collaboration product and acquires
 the tracker weight the operating-patterns addendum forbids.
 
+## AI auto-reply — an acknowledgement, not an agent (addendum, 2026-07-23)
+
+On ingest, the worker can ask Claude Haiku for one short, friendly
+acknowledgement of the comment and store it back on the record — a courtesy
+reply, not a decision. Worker destination only; OFF unless the
+`ANTHROPIC_API_KEY` secret is set (an optional binding exactly like
+`DISCORD_WEBHOOK` and `TYREKICK_REVIEW_KEY`).
+
+- **Field**: the stored record gains `ai_reply: string | null` (written once,
+  then immutable). The `/receipts` projection returns it alongside `status`,
+  `resolved_at`, and `resolution_note` so the widget can render it in the
+  comment's own thread, labelled 🤖.
+- **Model & cost guardrails (all four load-bearing)**: `claude-haiku-4-5`,
+  `max_tokens: 120` (~0.15¢/call); a global daily cap enforced via KV key
+  `ai:<YYYY-MM-DD>` incrementing against `AI_DAILY_CAP = 500` — once hit,
+  generation is silently skipped for the rest of the day. Operators should
+  also set an Anthropic workspace spend limit as the hard backstop; the daily
+  cap is app-level and is not itself a substitute for the account-level ceiling.
+- **No tools**: the model call carries no tool definitions. It can only emit
+  text — a comment engineered to read as an instruction has nothing to invoke.
+- **Untrusted-comment framing**: the comment body is wrapped in
+  `<comment>...</comment>` delimiters inside the prompt, with an explicit
+  instruction to ignore anything inside them that reads as a command to the
+  model — the same untrusted-input posture AGENTS.md applies to agents,
+  applied here to the model instead.
+- **Generation is idempotent, async, and fail-silent**: triggered once per
+  record via `ctx.waitUntil` so ingest latency is unaffected; a second attempt
+  on an already-replied record is a no-op; any failure (rate limit, timeout,
+  missing key, cap hit) leaves `ai_reply: null` and never surfaces to the
+  reviewer or blocks ingest.
+- **Visibility is author-only**: the reply rides the same per-author
+  capability as `/receipts` (unguessable UUID lookups) — only the browser
+  that submitted the comment ever fetches it. This is why shared review
+  (`TYREKICK_REVIEW_KEY`) must stay OFF on a public page: the safety property
+  this feature leans on is "nobody but the author asks," and shared review is
+  precisely the mode that lets someone else read the thread.
+- **The pin never changes status.** `ai_reply` is a thread message, not a
+  triage transition — it does not set `approved`/`resolved`, does not touch
+  `resolved_at`/`resolution_note`, and the model is never told it can close
+  anything. A reviewer who gets an AI acknowledgement still has an `open` pin.
+
+**Deliberately not built**: no tools, no multi-turn conversation, no
+autonomous action of any kind. It is a mouth, not hands — it can say
+something back; it cannot do anything.
+
 ## File ownership (updated 2026-07-05)
 The original multi-agent lanes (core / destinations / demo / tests as separate
 agents) are retired — the project is maintained by one human + one agent and
