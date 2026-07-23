@@ -13,6 +13,15 @@ heading, and any page errors attached.
 | [The reviewer experience](reviewing.md) | What reviewers see and can do: pins, threads, the drawer, keyboard and touch |
 | [Destinations](destinations.md) | Discord webhook vs. your own Cloudflare Worker, the worker's REST API, and protecting a public deployment |
 | [The agent loop (MCP)](agent-loop.md) | Setting up `tyrekick-mcp`, the five tools, review modes, and the passive/active operating patterns |
+
+### Setup guides for a public share
+
+| Guide | What it covers |
+| --- | --- |
+| [Taking a prototype public](going-public.md) | **Start here** if you're sharing widely — the order to set the three capabilities up in, and the one rule (shared review stays off) |
+| [Rate limiting](rate-limiting.md) | Cap what one IP can cost you on a public URL — two config lines and a redeploy |
+| [Shared review](shared-review.md) | Let reviewers see each other's pins — for a private link only; the trade explained |
+| [AI auto-reply](ai-auto-reply.md) | A bounded, one-line AI acknowledgement per comment — off by default, cents to run |
 | [Payload reference](payload.md) | Schema v2 field by field, plus the Discord message format |
 | [Troubleshooting & FAQ](troubleshooting.md) | Common problems, storage keys, privacy guarantees, SPA notes |
 
