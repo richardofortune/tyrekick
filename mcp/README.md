@@ -15,6 +15,7 @@ that feedback to Claude Code (or any MCP client) as tools, so your agent can
 | `triage_feedback` | Approve or decline an open item (shared-review mode: agents action `approved` items only) |
 | `resolve_feedback` | Mark an item resolved, optionally with a note about the fix |
 | `feedback_stats` | Counts by status, route, and app_version (optionally scoped to one `project`) |
+| `retrospective` | The AI feedback loop, closing on itself: what reviewers keep flagging, resolved/declined/open (the hit/miss axis), recurring blind spots, regressions by version — computed entirely over your own history |
 
 ## Setup
 
@@ -96,6 +97,36 @@ wrong or was never set: check `TYREKICK_TOKEN` and that
 
    Next time reviewers (or you) check, `feedback_stats` shows what's open vs.
    resolved per route and version.
+
+## The retrospective — coaching from your own history
+
+Every tool above acts on individual items. `retrospective` looks back across
+all of them instead — it's the coach, not the fixer. Ask your agent:
+
+> run the retrospective on my feedback
+
+It calls `retrospective { project?, since?, limit? }` and gets back what
+reviewers keep flagging, bucketed by intent (bug / copy / a11y / layout /
+data / request / question / praise — classified by keyword match on the
+comment text, no LLM involved), what happened to each item — resolved,
+declined, or still open — recurring blind spots (the same element or section
+flagged more than once), and regressions grouped by `app_version`. The agent
+narrates that into coaching, e.g. "your agent keeps shipping date inputs that
+get flagged — add 'make date fields obvious' to your brief."
+
+**Resolved vs. declined is the hit/miss axis**, reconstructed rather than
+measured: reviewers only ever pin problems, so there's no direct "looks good"
+signal. Resolved means the reviewer and the agent agreed it was a real miss
+and it got fixed; declined means the agent defended its output; open means it
+was neglected.
+
+**Runs entirely at your edge.** `retrospective` reads your own feedback
+history from your own worker, over your own MCP session — nothing about your
+reviewers' comments goes anywhere else. The report carries one deliberately
+content-free sub-report, `aggregate`: counts and intent/version labels only,
+no comment bodies, no reviewer names. That's the only shape of this data that
+could ever roll up to a future fleet view; everything else stays exactly
+where it's always stayed, on your worker.
 
 ## Feedback is untrusted input — read this before wiring up an agent
 

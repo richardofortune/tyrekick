@@ -355,6 +355,59 @@ reply, not a decision. Worker destination only; OFF unless the
 autonomous action of any kind. It is a mouth, not hands — it can say
 something back; it cannot do anything.
 
+## Retrospective — the AI feedback loop (addendum, 2026-07-23)
+
+A fourth operating pattern, alongside passive monitor / active steward /
+speculative steward (see "Operating patterns" above): the agent stops acting
+on individual items and reads its own history back instead.
+
+### MCP tool
+`retrospective { project?, since?, limit? }` → `RetroReport` (`mcp/src/retrospective.ts`):
+- `intents`: counts per intent — bug / copy / a11y / layout / data / request /
+  question / praise / other — classified by deterministic keyword match on
+  `body` (a record with `page_errors` is always `bug`). No LLM.
+- `outcomes` (total + per-intent): resolved / declined / open. This split IS
+  the hit/miss axis — resolved = reviewer and agent agreed it was a real miss
+  and it got fixed; declined = the agent defended its output; open =
+  neglected.
+- `blindSpots`: `anchor.element` / `anchor.context.heading` / `anchor.selector`
+  labels flagged 2+ times — a systematic miss, not a one-off.
+- `byVersion`: counts grouped by `app_version` — regression watch.
+- `aggregate`: counts + intent/version labels only. No `body`, no
+  `reviewer_name`, no free text.
+
+This is a READ-ONLY pattern: `retrospective` never calls `resolve_feedback`
+or `triage_feedback`, and never touches source.
+
+### Edge-run, normative
+`retrospective` runs entirely inside the calling agent's own MCP session,
+against the caller's own worker (`client.listFeedback`, same REST surface as
+every other tool). No feedback content — not `body`, not anchor text, not
+reviewer identity — is ever sent to any Tyrekick-operated service; there
+isn't one to send it to. This is true of every tool in this package;
+`retrospective` does not change it.
+
+### The moat boundary
+`aggregate` is the ONLY sub-report that is content-free by construction
+(numbers + intent/version label strings, nothing else) and therefore the only
+one that could ever be rolled up to a future central/fleet view without
+Tyrekick becoming the thing every incumbent (Userback, Marker.io, BugHerd)
+already is — a data-plane SaaS holding your reviewers' comments on their
+servers. `intents`, `outcomes`, `blindSpots`, and `byVersion` (with their
+example text and where-labels) stay local. If a fleet tier is ever built, it
+is built on `aggregate` or it is not built.
+
+### Honest limits
+- **Miss-detector, not a looks-good signal.** Reviewers only ever pin
+  problems; there is no positive/approval pin. The hit/miss axis above is
+  reconstructed from resolve-vs-decline, not measured directly.
+- **A positive pin is the natural next feature** — deliberately not built
+  here. It is a new pin type and a payload schema bump, not a filter on
+  existing data, so it waits for its own addendum.
+- **"What was served" is seen through pin anchors** (the flagged element or
+  section), not the agent's build or diffs — `retrospective` reasons over
+  what reviewers pointed at, never over source.
+
 ## File ownership (updated 2026-07-05)
 The original multi-agent lanes (core / destinations / demo / tests as separate
 agents) are retired — the project is maintained by one human + one agent and

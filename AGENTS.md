@@ -142,6 +142,11 @@ risk in opposite directions:
   owner's keep — the preview is the proposal. Cluster related pins into one
   choice, and surface conflicts ("Dave wants it bigger, Sam wants it gone")
   as decisions instead of implementing both.
+- **Retrospective** — read-only, edge-run: ask for "run the retrospective on
+  my feedback" to call the `retrospective` tool, which reads the project's
+  own feedback history and reports patterns (what's flagged, resolved vs.
+  declined, blind spots, regressions) for coaching; it never touches source
+  or feedback status.
 
 **Closing the loop across redeploys:** acting usually means redeploying, and on
 preview hosts the redeploy gets a NEW URL. The feedback you resolved points at

@@ -5,6 +5,7 @@
  */
 
 import type { FeedbackRecord, TyrekickClient, ListFeedbackParams } from "./client.js";
+import { retrospective, formatRetrospective } from "./retrospective.js";
 
 export interface ToolResult {
   content: Array<{ type: "text"; text: string }>;
@@ -150,6 +151,23 @@ function formatCounts(counts: Record<string, number>): string {
   const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
   if (entries.length === 0) return "  (none)";
   return entries.map(([k, n]) => `  ${k}: ${n}`).join("\n");
+}
+
+export async function retrospectiveTool(
+  client: TyrekickClient,
+  args: { project?: string; since?: string; limit?: number } = {},
+): Promise<ToolResult> {
+  try {
+    const records = await client.listFeedback({
+      limit: args.limit ?? 200,
+      project: args.project,
+      since: args.since,
+    });
+    const scope = args.project ? `for project "${args.project}"` : undefined;
+    return ok(formatRetrospective(retrospective(records), scope));
+  } catch (e) {
+    return err(e);
+  }
 }
 
 export async function feedbackStatsTool(
