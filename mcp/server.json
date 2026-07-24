@@ -6,12 +6,12 @@
     "url": "https://github.com/richardofortune/tyrekick",
     "source": "github"
   },
-  "version": "0.2.0",
+  "version": "0.3.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "tyrekick-mcp",
-      "version": "0.2.1",
+      "version": "0.3.0",
       "transport": { "type": "stdio" },
       "environmentVariables": [
         {
