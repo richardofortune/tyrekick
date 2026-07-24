@@ -13,6 +13,7 @@
     "destinations/cloudflare/README.md": "f6b678dab3dcebe9a5708707089323af86482fceed5058a839e08d23e0bf04a2",
     "destinations/cloudflare/worker.ts": "938de01b40972d9ba6c72bb520fdfeec9d70af9b40915b9da930385018c6f498",
     "destinations/discord/README.md": "becc0b78f10479c6f1e121cf3a6053451509ce407f5dae9a4345007f186aad03",
+    "docs/ARCHITECTURE.md": "6d91a89aada3c27cf3c9ef9c1a1b70b8045b0703c8bd680204607fadc67ab8d0",
     "docs/DEMO.md": "053e1f3f259887b2520c15fc4a9d0b5ef6982c17b66d423c6de0e225145fa497",
     "docs/QUICKSTART.md": "550adafe296924842e810e22eb93b2838bb3e19c072f9a6e51eabc3e569d8a12",
     "docs/README.md": "d35d8b002909da4e1844b005227cbf20afc1393ba99db9bb5e50f8dd709119e2",
@@ -29,6 +30,7 @@
     "docs/rate-limiting.md": "171a134f94a7d3445d3a2fe5628f6d2095bf7230f709c9dcf939b99a33ab0637",
     "docs/retrospective.md": "b7c82780a96dbfdd465d8e02addf58234dcb0542bd6098c62b0de7796f0613dd",
     "docs/reviewing.md": "9ac55ae51c19515da4c474cbd0ef64af9b900d1e387bea84e360f5292283d4ad",
+    "docs/security-review.md": "163d2f7f4e825cf2f0ab98127d775d8a90e1e21e4983372924adf16c89b5515d",
     "docs/shared-review.md": "38c588663fb9ff761cac0358780ed33a0289104e32f66f03e23d8ea6d2c414e4",
     "docs/troubleshooting.md": "db048e048c4336472ce72028dde1bf99c9ff8a9aff01b0928d7f8e7a99b51e5d",
     "fix_svg.py": "34d3a10be98116b0db075d09735e83dc0d1c80dcb534f1b3864797df840ac3c9",
@@ -100,13 +102,13 @@
     "test/unit/worker-shared.test.ts": "bc0d531fbdb2c5545f4f3fa53ea57e8faf7302dbd33f7f240749f0c9c65489ae",
     "vitest.config.ts": "9607be0c9432c9939a3248b44f0ce942582d1318cd551ed3c68f590dad839405"
   },
-  "indexed_at_commit": "e0f68c1529d444b94c5e89340f233e3f848ce14a",
-  "indexed_at_timestamp": "2026-07-24T09:47:19.064042+00:00",
+  "indexed_at_commit": "10ad60aebae5b0582374dbb54d85c8e93bcb329f",
+  "indexed_at_timestamp": "2026-07-24T10:06:03.191486+00:00",
   "schema_version": 3,
   "stats": {
-    "total_edges": 843,
-    "total_files": 99,
-    "total_nodes": 662
+    "total_edges": 869,
+    "total_files": 101,
+    "total_nodes": 690
   },
   "vexp_version": "2.3.0"
 }
