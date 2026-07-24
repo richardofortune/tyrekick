@@ -399,11 +399,24 @@ export function renderStatus(s) {
 export function readinessNote(s) {
   if (s.transport !== "json") return null; // worker-only concepts
   const items = [];
-  if (s.reviewKey)
+  const sharedReview = !!s.reviewKey;
+  const aiReply = !!(s.secrets && s.secrets.known && s.secrets.names.has("ANTHROPIC_API_KEY"));
+
+  // The one dangerous COMBINATION the per-knob rows can't see on their own: AI
+  // auto-reply is safe only because a reply is author-only (fetched by the
+  // unguessable capability UUID), and shared review is exactly what lets another
+  // reviewer read that thread. Each setting is fine alone; together the AI reply
+  // leaks to everyone holding the link. See CONTRACT.md (2026-07-23 addendum).
+  if (sharedReview && aiReply)
+    items.push(
+      "shared review AND AI auto-reply are BOTH on — an AI reply is meant for the comment's author alone, but shared review lets any reviewer read the thread. Turn one off.",
+    );
+  else if (sharedReview)
     items.push("shared review is ON — only for a private link, never a public URL");
+
   if (s.rateLimit && s.rateLimit.found && !s.rateLimit.configured)
     items.push("no rate limiting — add it before sharing publicly");
-  if (s.secrets && s.secrets.known && s.secrets.names.has("ANTHROPIC_API_KEY"))
+  if (aiReply)
     items.push("AI auto-reply is on — confirm an Anthropic workspace spend limit");
   if (!items.length) return null;
   return "Before a public share:\n" + items.map((w) => `    · ${w}`).join("\n");
