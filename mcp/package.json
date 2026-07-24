@@ -1,6 +1,6 @@
 {
   "name": "tyrekick-mcp",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "mcpName": "io.github.richardofortune/tyrekick",
   "description": "MCP server for Tyrekick \u2014 pull reviewer feedback from your Cloudflare Worker into Claude Code (or any MCP client) and resolve it as you fix things.",
   "type": "module",
@@ -10,7 +10,8 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md"
   ],
   "engines": {
     "node": ">=18"
