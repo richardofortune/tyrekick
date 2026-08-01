@@ -28,6 +28,8 @@ import {
   cmdDisable,
   cmdEnable,
   cmdRemove,
+  linkPreview,
+  previewTags,
 } from "./lib.mjs";
 import { runMenu } from "./tui.mjs";
 
@@ -49,6 +51,7 @@ init options:
   --app-version <v>    Version string (default: git short SHA, else "v0.1")
   --transport <t>      "discord" | "json" (default: auto-detect from URL)
   --no-test            Skip sending the test comment
+  --no-preview         Skip adding Open Graph tags for the shared link
   --yes                No prompts; fail instead of asking (for agents/CI)
   --help               Show this help
 
@@ -61,6 +64,7 @@ function parseArgs(argv) {
     if (a === "--help" || a === "-h") args.help = true;
     else if (a === "--yes" || a === "-y") args.yes = true;
     else if (a === "--no-test") args.noTest = true;
+    else if (a === "--no-preview") args.noPreview = true;
     else if (a === "--teardown") args.teardown = true;
     else if (a === "--webhook") args.webhook = argv[++i];
     else if (a === "--file") args.file = argv[++i];
@@ -110,6 +114,32 @@ async function initCmd(args) {
       : html + "\n" + tag;
     writeFileSync(file, updated);
     console.log(`✓ injected widget into ${file} (project: ${project}, version: ${appVersion}, transport: ${transport})`);
+  }
+
+  // 3b. Link preview. The review URL gets pasted into a chat, and that paste is
+  // the ask — a page with no Open Graph unfurls as a bare hostname, which reads
+  // like a broken link. Only ever ADDS, and only when the page has none: an
+  // author who set og: tags meant them.
+  if (!args.noPreview) {
+    const current = readFileSync(file, "utf8");
+    const pv = linkPreview(current);
+    if (pv.hasOg) {
+      console.log(`· link preview already set — left alone`);
+    } else if (!pv.title) {
+      console.log(`⚠ ${file} has no <title>, so there is nothing to build a link preview from.`);
+      console.log(`  Add one, then re-run — a shared link will otherwise unfurl as a bare URL.`);
+    } else {
+      const tags = previewTags({
+        title: pv.title,
+        description: pv.description || `Review ${pv.title} and pin your comments.`,
+      });
+      const withTags = current.includes("</head>")
+        ? current.replace("</head>", `${tags}</head>`)
+        : tags + current;
+      writeFileSync(file, withTags);
+      console.log(`✓ added Open Graph tags so a shared link unfurls (--no-preview to skip)`);
+      if (!pv.image) console.log(`  · add an og:image for a card rather than a line of text`);
+    }
   }
 
   // 4. Test comment

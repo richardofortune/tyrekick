@@ -97,6 +97,90 @@ export function stripTag(html) {
   return { html: html.slice(0, m.index) + html.slice(m.index + m[0].length), block: m[0] };
 }
 
+// ---------------------------------------------------------------------------
+// Link preview
+// ---------------------------------------------------------------------------
+//
+// A review link is pasted into Slack, Discord or a DM — that paste IS the ask.
+// If the page carries no Open Graph tags the unfurl is a bare hostname, which
+// reads like a broken link rather than an invitation. Reviewers who do not
+// recognise it do not click.
+//
+// This only inspects and reports. Writing tags is `init`'s job, and it never
+// overwrites what an author already set.
+
+/** Read the content of a <meta> by property= or name=, whichever it uses. */
+function metaContent(html, key) {
+  const re = new RegExp(
+    `<meta[^>]*(?:property|name)=["']${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["'][^>]*>`,
+    "i",
+  );
+  const tag = html.match(re);
+  if (!tag) return null;
+  const c = tag[0].match(/content=["']([^"']*)["']/i);
+  return c ? c[1].trim() || null : null;
+}
+
+/**
+ * What a chat client will show when this page's URL is pasted.
+ *
+ * Falls back the way the crawlers do: og:title then <title>, og:description
+ * then the meta description. `missing` lists only what is worth fixing — an
+ * image is optional but it is the difference between a line of text and a card.
+ */
+export function linkPreview(html) {
+  const ogTitle = metaContent(html, "og:title");
+  const ogDesc = metaContent(html, "og:description");
+  const titleTag = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const title = ogTitle || (titleTag ? titleTag[1].trim() || null : null);
+  const description = ogDesc || metaContent(html, "description");
+  const image = metaContent(html, "og:image");
+  const url = metaContent(html, "og:url");
+  const card = metaContent(html, "twitter:card");
+
+  const missing = [];
+  if (!title) missing.push("title");
+  if (!description) missing.push("description");
+  if (!image) missing.push("image");
+
+  return {
+    title,
+    description,
+    image,
+    url,
+    card,
+    /** Any Open Graph at all, as opposed to bare HTML the crawler guessed from. */
+    hasOg: Boolean(ogTitle || ogDesc || image || url),
+    missing,
+    /** A title and a description is the floor for an unfurl that reads as deliberate. */
+    usable: Boolean(title && description),
+  };
+}
+
+/**
+ * Minimal Open Graph tags to add to a page that has none.
+ *
+ * Deliberately derived from what the page already says rather than invented,
+ * and deliberately not including og:image or og:url — `init` knows neither the
+ * deploy URL nor an image, and a wrong og:url is worse than none. `status`
+ * reports both as the next improvement.
+ */
+export function previewTags({ title, description }) {
+  const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+  const out = [`  <!-- Tyrekick: so a shared review link unfurls as an invitation, not a bare URL -->`];
+  out.push(`  <meta property="og:type" content="website">`);
+  if (title) {
+    out.push(`  <meta property="og:title" content="${esc(title)}">`);
+    out.push(`  <meta name="twitter:title" content="${esc(title)}">`);
+  }
+  if (description) {
+    out.push(`  <meta property="og:description" content="${esc(description)}">`);
+    out.push(`  <meta name="twitter:description" content="${esc(description)}">`);
+  }
+  out.push(`  <meta name="twitter:card" content="summary">`);
+  return out.join("\n") + "\n";
+}
+
 export function parseConfig(block) {
   if (!block) return {};
   const attr = (name) => {
@@ -321,6 +405,12 @@ export async function gatherStatus() {
     reviewKey,
     rateLimit,
     secrets,
+    // What a pasted review link will unfurl to. Read from the same file the
+    // widget lives in, so it reflects the page reviewers actually open.
+    preview:
+      widget.file && existsSync(widget.file)
+        ? linkPreview(readFileSync(widget.file, "utf8"))
+        : null,
     project: cfg.project || basename(resolve(".")),
   };
 }
@@ -341,6 +431,19 @@ export function renderStatus(s) {
   if (s.mcp.cliMissing) rows.push(["MCP", "? claude CLI not found"]);
   else if (s.mcp.registered) rows.push(["MCP", s.mcp.hasToken ? "✔ registered (token set)" : "✔ registered"]);
   else rows.push(["MCP", "✗ not registered"]);
+
+  // The paste IS the ask. A bare unfurl reads like a broken link, and reviewers
+  // who do not recognise it do not click.
+  if (s.preview) {
+    const p = s.preview;
+    if (!p.usable) {
+      rows.push(["Link preview", `✗ shares as a bare URL — no ${p.missing.join(", ")}`]);
+    } else if (p.missing.length) {
+      rows.push(["Link preview", `⚠ text only — add og:image for a card`]);
+    } else {
+      rows.push(["Link preview", "✔ title, description and image"]);
+    }
+  }
 
   // Public-share posture — only meaningful on the worker (json) transport.
   if (s.transport === "json") {

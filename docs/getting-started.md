@@ -63,6 +63,38 @@ it, click anywhere on the page, type a comment, hit **Send** (or
 **Cmd/Ctrl+Enter**). Within a few seconds the comment should appear at your
 destination. If it doesn't, see [Troubleshooting](troubleshooting.md).
 
+## The link is the ask
+
+Once the prototype has a URL, that URL gets pasted into Slack, Discord or a DM —
+and **that paste is how you summon reviewers**. A page with no Open Graph tags
+unfurls as a bare hostname, which reads like a broken link. People who don't
+recognise it don't click.
+
+So `init` adds a minimal preview when the page has none:
+
+```html
+<meta property="og:title" content="Trip Planner">
+<meta property="og:description" content="Review Trip Planner and pin your comments.">
+<meta name="twitter:card" content="summary">
+```
+
+Title comes from the page's own `<title>`, description from its meta description
+if it has one. **Nothing is overwritten** — if you already set `og:` tags, they
+are left alone and `init` says so. `--no-preview` skips the step entirely.
+
+Two tags are deliberately not written, because `init` cannot know them:
+
+- **`og:url`** — the deploy URL. A wrong canonical URL is worse than none.
+- **`og:image`** — the difference between a line of text and a card. Add a
+  1200×630 image and point at it; `tyrekick status` will tell you when it's
+  missing.
+
+Check what a paste will look like at any time:
+
+```bash
+npx tyrekick status     # Link preview  ✗ shares as a bare URL — no description, image
+```
+
 ## Choosing a destination
 
 Two things decide this. First, the role: **Discord shows you it works in 60

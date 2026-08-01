@@ -5,6 +5,19 @@ versioned separately; see [`mcp/`](mcp/).
 
 ## Unreleased
 
+- **A shared review link now unfurls as an invitation, not a bare URL.** The
+  review URL gets pasted into Slack or Discord, and that paste is the ask — but
+  a generated prototype rarely has Open Graph tags, so the unfurl was a bare
+  hostname that reads like a broken link. `init` now adds a minimal preview
+  (`og:title`, `og:description`, `twitter:card`) derived from the page's own
+  `<title>` and meta description. It only ever **adds**: a page that already has
+  `og:` tags is left alone and reported. `--no-preview` skips it. `og:url` and
+  `og:image` are deliberately not written, because `init` knows neither the
+  deploy URL nor an image, and a wrong canonical URL is worse than none.
+  `tyrekick status` gained a **Link preview** row reporting what a paste will
+  actually show, and flagging the missing image that separates a card from a
+  line of text.
+
 - **SPA route changes reset per-route pins.** Pin/draft/receipt storage is keyed
   by `location.pathname`, but `restore()` only ran once at `init()`, so on a
   client-routed app (history.pushState, no reload) the previous view's pins
