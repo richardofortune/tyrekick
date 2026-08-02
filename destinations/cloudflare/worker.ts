@@ -222,6 +222,29 @@ interface ExecutionContext {
 /** Longest comment body we keep. Anything over this is truncated with an ellipsis. */
 const MAX_BODY = 2000;
 
+/**
+ * Hard byte ceiling on an ingest request. A legit schema-2 payload is ~1-3 KB.
+ * MAX_BODY only bounds the comment text; this bounds the WHOLE record, so a raw
+ * POST can't smuggle a multi-MB `page_errors`/`env`/`anchor` blob that would
+ * bloat KV storage and OOM the read path (list/shared fetch many bodies into a
+ * single isolate).
+ */
+const MAX_INGEST_BYTES = 32 * 1024;
+
+/** Cap on any captured/echoed free-text field other than `body`. */
+const MAX_FIELD_TEXT = 300;
+
+/** page_errors: keep at most this many entries (the widget already sends ≤5). */
+const MAX_PAGE_ERRORS = 5;
+
+/**
+ * Canonical UUID shape. The widget always mints ids with `crypto.randomUUID()`,
+ * so a valid client id is a real UUID; anything else on ingest is a raw poster
+ * whose id we replace. Enforcing this on the WRITE path is what makes the
+ * /receipts "unguessable capability" premise actually true.
+ */
+const CANONICAL_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** List page size: default when `limit` is absent/garbage, and the hard cap. */
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
@@ -708,12 +731,69 @@ async function handleShared(request: Request, env: Env): Promise<Response> {
   return json({ ok: true, count: pins.length, total: filtered.length, pins });
 }
 
+/**
+ * Clamp attacker-influenceable free-text fields on ingest. The widget already
+ * clips these client-side; a raw POST to the open ingest bypasses that, so we
+ * re-enforce server-side — keeping oversized/junk text out of the shared-review
+ * projection, the Discord mirror, and the retrospective's version axis. Mutates
+ * the payload in place.
+ */
+function clampIngestFields(payload: FeedbackPayload): void {
+  const p = payload as Record<string, unknown>;
+  if (typeof p.app_version === "string") p.app_version = p.app_version.slice(0, 64);
+  if (typeof p.reviewer_name === "string") p.reviewer_name = p.reviewer_name.slice(0, 120);
+  if (typeof p.project_name === "string") p.project_name = p.project_name.slice(0, 200);
+  if (Array.isArray(p.page_errors)) {
+    p.page_errors = p.page_errors.slice(0, MAX_PAGE_ERRORS).map((e) => String(e).slice(0, MAX_FIELD_TEXT));
+  } else if (p.page_errors != null) {
+    p.page_errors = [];
+  }
+  const el = (p.anchor as { element?: { text?: unknown; label?: unknown } } | undefined)?.element;
+  if (el && typeof el === "object") {
+    if (typeof el.text === "string") el.text = el.text.slice(0, MAX_FIELD_TEXT);
+    if (typeof el.label === "string") el.label = el.label.slice(0, MAX_FIELD_TEXT);
+  }
+}
+
+/**
+ * Keep a client `created_at` only if it is a plausible ISO timestamp (not far
+ * in the future, not absurdly old); otherwise fall back to the server clock, so
+ * a forged timestamp can't poison the retrospective window or sort order.
+ */
+function trustedCreatedAt(value: unknown, receivedAt: string): string {
+  if (typeof value !== "string") return receivedAt;
+  const t = Date.parse(value);
+  if (Number.isNaN(t)) return receivedAt;
+  const now = Date.parse(receivedAt);
+  if (t > now + 86_400_000) return receivedAt; // no future-dating > 1 day
+  if (t < now - 3650 * 86_400_000) return receivedAt; // no absurd past (> ~10y)
+  return value;
+}
+
 /** POST / and POST /feedback — open ingest of a widget FeedbackPayload. */
 async function handleIngest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  // Byte ceiling BEFORE parsing. A cheap Content-Length reject first, then a
+  // hard cap on the actually-read text so a missing or lying header can't
+  // smuggle a huge body past us — this bounds per-record KV storage and the
+  // read-path fan-out that a fat record would otherwise OOM.
+  const declared = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > MAX_INGEST_BYTES) {
+    return json({ ok: false, error: "payload_too_large" }, 413);
+  }
+  let rawBody: string;
+  try {
+    rawBody = await request.text();
+  } catch {
+    return json({ ok: false, error: "invalid_json" }, 400);
+  }
+  if (rawBody.length > MAX_INGEST_BYTES) {
+    return json({ ok: false, error: "payload_too_large" }, 413);
+  }
+
   // Parse the JSON body defensively — malformed JSON must not throw.
   let payload: FeedbackPayload;
   try {
-    payload = (await request.json()) as FeedbackPayload;
+    payload = JSON.parse(rawBody) as FeedbackPayload;
   } catch {
     return json({ ok: false, error: "invalid_json" }, 400);
   }
@@ -731,11 +811,32 @@ async function handleIngest(request: Request, env: Env, ctx: ExecutionContext): 
   // Truncate over-long bodies so one giant comment can't bloat a KV value.
   payload.body = trimmed.length > MAX_BODY ? trimmed.slice(0, MAX_BODY) + "…" : trimmed;
 
-  // Normalise the id/timestamp so the key is always valid, then wrap the
-  // payload in the stored record shape (payload + server lifecycle fields).
+  // Re-enforce the widget's client-side field clipping on the server (a raw POST
+  // bypasses it): oversized/junk text must not reach the shared view or aggregate.
+  clampIngestFields(payload);
+
   const receivedAt = new Date().toISOString();
-  payload.id = payload.id || crypto.randomUUID();
-  payload.created_at = payload.created_at || receivedAt;
+
+  // The server owns the KV key. A valid client UUID is kept so the widget's
+  // /receipts capability keeps working; anything else is replaced with a fresh
+  // one (which also makes the /receipts unguessable-id premise true). Crucially,
+  // ingest is idempotent-CREATE only: if a valid id already exists we ack success
+  // WITHOUT overwriting, so an open POST can never rewrite another reviewer's
+  // comment or silently reset a resolved item back to open. Acking (not 409)
+  // also keeps the widget's own transport retry — which resends the same id —
+  // working when a first write landed but its response was lost.
+  const clientId = typeof payload.id === "string" ? payload.id : "";
+  if (clientId && CANONICAL_UUID.test(clientId)) {
+    if (await loadRecord(env, clientId)) {
+      return json({ ok: true, id: clientId });
+    }
+    payload.id = clientId;
+  } else {
+    payload.id = crypto.randomUUID();
+  }
+
+  // Trust the client timestamp only if plausible; otherwise use the server clock.
+  payload.created_at = trustedCreatedAt(payload.created_at, receivedAt);
 
   const record: FeedbackRecord = {
     ...payload,
