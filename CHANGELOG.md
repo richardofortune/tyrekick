@@ -3,6 +3,19 @@
 Notable changes to the `tyrekick` widget. The MCP server (`tyrekick-mcp`) is
 versioned separately; see [`mcp/`](mcp/).
 
+## Unreleased
+
+- **`init --url <url>` writes `og:url`.** 0.5.0 omitted it on the grounds that
+  `init` cannot know the deploy URL — true, but the caller often can, and
+  without `og:url` a crawler treats a preview subdomain and the production
+  alias as two different pages. Passing `--url` now writes the canonical tag.
+  It is validated before anything is written: absolute `http(s)`, public host,
+  no credentials, fragment dropped, and a bare host read as `https://` — a typo
+  fails the command rather than pointing every unfurl at the wrong page, and
+  fails early enough to leave no half-finished install. On a page that already
+  has `og:` tags but no `og:url`, `--url` adds just that one line; everything
+  the author set is still left alone. Without the flag, behaviour is unchanged.
+
 ## 0.6.0
 
 - **Comment numbers stop moving.** A pin's number was a count taken over

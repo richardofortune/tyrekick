@@ -82,9 +82,24 @@ Title comes from the page's own `<title>`, description from its meta description
 if it has one. **Nothing is overwritten** — if you already set `og:` tags, they
 are left alone and `init` says so. `--no-preview` skips the step entirely.
 
-Two tags are deliberately not written, because `init` cannot know them:
+`init` cannot guess where the page will be deployed, so it never invents an
+`og:url` — but you can tell it:
 
-- **`og:url`** — the deploy URL. A wrong canonical URL is worse than none.
+```bash
+npx tyrekick init --webhook <url> --url https://trip-planner.pages.dev/
+```
+
+That writes `og:url`, which is what stops a crawler treating a preview
+subdomain as a separate page. The URL is validated first: it must be an
+absolute `http(s)` address on a public host, and a typo fails the command
+before anything is written rather than pointing every unfurl at the wrong page.
+A bare host is fine — `trip-planner.pages.dev` is read as `https://`.
+
+Pass `--url` on a page that already has `og:` tags but no `og:url` and it adds
+just that one line; everything the author set is still left alone.
+
+One tag is still never written, because `init` has nothing to point at:
+
 - **`og:image`** — the difference between a line of text and a card. Add a
   1200×630 image and point at it; `tyrekick status` will tell you when it's
   missing.

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 // The CLI helpers are plain Node ESM (zero-dep); import them directly.
-import { linkPreview, previewTags, renderStatus } from "../../bin/lib.mjs";
+import { linkPreview, previewTags, renderStatus, canonicalUrl, ogUrlTag } from "../../bin/lib.mjs";
 
 /** A generated prototype as it usually arrives: a title, and nothing else. */
 const bare = `<!doctype html><html><head><title>Trip Planner</title></head><body><h1>Hi</h1></body></html>`;
@@ -83,10 +83,61 @@ describe("previewTags", () => {
     expect(p.usable).toBe(true);
   });
 
-  it("omits og:url and og:image, which init cannot know", () => {
+  it("omits og:url when not told one, and og:image always — init cannot know either", () => {
     const out = previewTags({ title: "T", description: "d" });
     expect(out).not.toContain("og:url");
     expect(out).not.toContain("og:image");
+  });
+
+  it("emits og:url when --url supplied it", () => {
+    const out = previewTags({ title: "T", description: "d", url: "https://demo.pages.dev/" });
+    expect(out).toContain(`<meta property="og:url" content="https://demo.pages.dev/">`);
+  });
+
+  it("does not emit a bad og:url — a wrong canonical is worse than none", () => {
+    for (const bad of ["not a url", "javascript:alert(1)", "http://localhost:8123/", ""]) {
+      expect(previewTags({ title: "T", description: "d", url: bad })).not.toContain("og:url");
+    }
+  });
+
+  it("round-trips the url: what it writes is what linkPreview then reads", () => {
+    const html = `<head>${previewTags({ title: "T", description: "d", url: "demo.pages.dev" })}</head>`;
+    expect(linkPreview(html).url).toBe("https://demo.pages.dev/");
+  });
+});
+
+describe("canonicalUrl", () => {
+  it("assumes https for a bare host, because that is how a deploy URL is typed", () => {
+    expect(canonicalUrl("demo.pages.dev")).toBe("https://demo.pages.dev/");
+  });
+
+  it("keeps an explicit scheme, path and query", () => {
+    expect(canonicalUrl("http://demo.test/review?x=1")).toBe("http://demo.test/review?x=1");
+  });
+
+  it("drops the fragment, which no crawler canonicalises on", () => {
+    expect(canonicalUrl("https://demo.test/page#section")).toBe("https://demo.test/page");
+  });
+
+  it("refuses anything a crawler should not be pointed at", () => {
+    expect(canonicalUrl("javascript:alert(1)")).toBeNull(); // not a page
+    expect(canonicalUrl("file:///tmp/index.html")).toBeNull(); // not fetchable
+    expect(canonicalUrl("http://localhost:3000")).toBeNull(); // not shareable
+    expect(canonicalUrl("https://user:pw@demo.test/")).toBeNull(); // credentials
+    expect(canonicalUrl("   ")).toBeNull();
+    expect(canonicalUrl(undefined)).toBeNull();
+  });
+});
+
+describe("ogUrlTag", () => {
+  it("gives just the one line, for a page that already has other og: tags", () => {
+    expect(ogUrlTag("demo.pages.dev")).toBe(
+      `  <meta property="og:url" content="https://demo.pages.dev/">\n`,
+    );
+  });
+
+  it("returns null rather than a broken tag", () => {
+    expect(ogUrlTag("nonsense")).toBeNull();
   });
 });
 

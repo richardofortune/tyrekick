@@ -30,6 +30,8 @@ import {
   cmdRemove,
   linkPreview,
   previewTags,
+  canonicalUrl,
+  ogUrlTag,
 } from "./lib.mjs";
 import { runMenu } from "./tui.mjs";
 
@@ -48,6 +50,7 @@ init options:
   --webhook <url>      Destination URL (Discord webhook or Tyrekick worker). Prompted if omitted.
   --file <path>        HTML file to inject into (default: auto-detect index.html)
   --project <name>     Project label (default: current folder name)
+  --url <url>          Public review URL, for og:url so the unfurl is canonical
   --app-version <v>    Version string (default: git short SHA, else "v0.1")
   --transport <t>      "discord" | "json" (default: auto-detect from URL)
   --no-test            Skip sending the test comment
@@ -69,6 +72,7 @@ function parseArgs(argv) {
     else if (a === "--webhook") args.webhook = argv[++i];
     else if (a === "--file") args.file = argv[++i];
     else if (a === "--project") args.project = argv[++i];
+    else if (a === "--url") args.url = argv[++i];
     else if (a === "--app-version") args.appVersion = argv[++i];
     else if (a === "--transport") args.transport = argv[++i];
     else args._.push(a);
@@ -96,6 +100,10 @@ async function initCmd(args) {
   const file = detectHtml(args.file);
   const project = args.project || basename(resolve("."));
   const appVersion = args.appVersion || gitSha() || "v0.1";
+  // Validated before anything is written: a wrong og:url sends every unfurl to
+  // the wrong page, and a typo here should not leave a half-finished install.
+  const reviewUrl = args.url ? canonicalUrl(args.url) : null;
+  if (args.url && !reviewUrl) fail(`--url must be an absolute http(s) URL on a public host, got "${args.url}"`);
 
   // 3. Inject (idempotent)
   const html = readFileSync(file, "utf8");
@@ -124,7 +132,14 @@ async function initCmd(args) {
     const current = readFileSync(file, "utf8");
     const pv = linkPreview(current);
     if (pv.hasOg) {
-      console.log(`· link preview already set — left alone`);
+      // An author who set og: tags meant them — but a missing og:url is a gap,
+      // not a decision, and they have just told us what it should be.
+      if (reviewUrl && !pv.url && current.includes("</head>")) {
+        writeFileSync(file, current.replace("</head>", `${ogUrlTag(reviewUrl)}</head>`));
+        console.log(`✓ added og:url to the existing link preview (${reviewUrl})`);
+      } else {
+        console.log(`· link preview already set — left alone`);
+      }
     } else if (!pv.title) {
       console.log(`⚠ ${file} has no <title>, so there is nothing to build a link preview from.`);
       console.log(`  Add one, then re-run — a shared link will otherwise unfurl as a bare URL.`);
@@ -132,6 +147,7 @@ async function initCmd(args) {
       const tags = previewTags({
         title: pv.title,
         description: pv.description || `Review ${pv.title} and pin your comments.`,
+        url: reviewUrl,
       });
       const withTags = current.includes("</head>")
         ? current.replace("</head>", `${tags}</head>`)

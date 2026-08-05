@@ -158,14 +158,40 @@ export function linkPreview(html) {
 }
 
 /**
+ * Canonicalise a review URL for og:url, or return null if it is not one.
+ *
+ * A wrong og:url is worse than none — crawlers treat it as the canonical
+ * address, so a typo can point every unfurl at the wrong page. Hence: absolute
+ * http(s) only, no credentials, and the fragment dropped (never part of what a
+ * crawler canonicalises). A bare host is accepted and assumed https, because
+ * that is how people type a deploy URL.
+ */
+export function canonicalUrl(input) {
+  const raw = String(input ?? "").trim();
+  if (!raw) return null;
+  let u;
+  try {
+    u = new URL(/^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : `https://${raw}`);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+  if (!u.hostname || !u.hostname.includes(".")) return null; // localhost is not shareable
+  if (u.username || u.password) return null;
+  u.hash = "";
+  return u.href;
+}
+
+/**
  * Minimal Open Graph tags to add to a page that has none.
  *
- * Deliberately derived from what the page already says rather than invented,
- * and deliberately not including og:image or og:url — `init` knows neither the
- * deploy URL nor an image, and a wrong og:url is worse than none. `status`
- * reports both as the next improvement.
+ * Deliberately derived from what the page already says rather than invented.
+ * og:url is included only when the caller passes one — `init` cannot guess a
+ * deploy URL, but it can be told (`--url`). og:image is still omitted: an
+ * installer has no artwork to point at, and `status` reports it as the next
+ * improvement.
  */
-export function previewTags({ title, description }) {
+export function previewTags({ title, description, url }) {
   const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
   const out = [`  <!-- Tyrekick: so a shared review link unfurls as an invitation, not a bare URL -->`];
   out.push(`  <meta property="og:type" content="website">`);
@@ -177,8 +203,18 @@ export function previewTags({ title, description }) {
     out.push(`  <meta property="og:description" content="${esc(description)}">`);
     out.push(`  <meta name="twitter:description" content="${esc(description)}">`);
   }
+  const canonical = canonicalUrl(url);
+  if (canonical) out.push(`  <meta property="og:url" content="${esc(canonical)}">`);
   out.push(`  <meta name="twitter:card" content="summary">`);
   return out.join("\n") + "\n";
+}
+
+/** The og:url line on its own, for a page that already has other og: tags. */
+export function ogUrlTag(url) {
+  const canonical = canonicalUrl(url);
+  if (!canonical) return null;
+  const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+  return `  <meta property="og:url" content="${esc(canonical)}">\n`;
 }
 
 export function parseConfig(block) {
