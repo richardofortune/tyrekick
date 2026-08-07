@@ -111,19 +111,22 @@ func (a *App) maybeReply(record FeedbackRecord) {
 		return // idempotent: already answered
 	}
 	day := time.Now().UTC().Format("2006-01-02")
-	if !a.store.UnderDailyCap(day, a.cfg.AIDailyCap) {
+	// Claim the budget slot BEFORE spending it, so concurrent ingests can't
+	// all pass the same check and overshoot the cap together.
+	if !a.store.ReserveAIReply(day, a.cfg.AIDailyCap) {
 		return // budget spent for today
 	}
 
 	reply, ok := generateReply(a.httpClient, a.cfg.AnthropicAPIKey, record.body())
 	if !ok {
-		return // no usable reply — leave ai_reply null
+		_ = a.store.ReleaseAIReply(day) // nothing generated — don't charge for it
+		return                          // leave ai_reply null
 	}
 
-	record = record.clone()
-	record["ai_reply"] = reply
-	if err := a.store.SaveRecord(record); err != nil {
-		return
+	// Patch just this field: the record may have been triaged while the model
+	// was thinking, and that PATCH must survive.
+	written, err := a.store.SetAIReply(record.id(), reply)
+	if err != nil || !written {
+		_ = a.store.ReleaseAIReply(day)
 	}
-	_ = a.store.BumpDailyCounter(day)
 }

@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -33,6 +34,16 @@ type Config struct {
 	IngestRatePeriod int // seconds
 	ReadRateLimit    int
 	ReadRatePeriod   int
+
+	// TrustProxy decides whether X-Forwarded-For / X-Real-IP may be believed
+	// when keying the rate limiters. OFF by default: those headers are
+	// client-supplied, so trusting them on a directly-exposed service turns
+	// the rate limiter into a no-op (any client picks a fresh key per request)
+	// AND into a memory-growth vector (one tracked bucket per forged IP).
+	// Turn it on only when a reverse proxy you control sets them and strips
+	// any client-supplied copies. The Worker never needs this switch:
+	// CF-Connecting-IP is unforgeable at the edge.
+	TrustProxy bool
 }
 
 func loadConfig() Config {
@@ -54,6 +65,8 @@ func loadConfig() Config {
 		IngestRatePeriod: envInt("INGEST_RATE_PERIOD_SECONDS", 60),
 		ReadRateLimit:    envInt("READ_RATE_LIMIT", 120),
 		ReadRatePeriod:   envInt("READ_RATE_PERIOD_SECONDS", 60),
+
+		TrustProxy: envBool("TRUST_PROXY", false),
 	}
 }
 
@@ -73,6 +86,18 @@ func envInt(key string, def int) int {
 	return def
 }
 
+// envBool reads a boolean env var. Unparseable values fall back to def rather
+// than silently reading as false — a typo in TRUST_PROXY should not quietly
+// change the trust model in either direction.
+func envBool(key string, def bool) bool {
+	if v := os.Getenv(key); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			return b
+		}
+	}
+	return def
+}
+
 // App holds the request-serving dependencies, replacing worker.ts's `env`
 // parameter threaded through every handler.
 type App struct {
@@ -81,6 +106,39 @@ type App struct {
 	ingestLimiter *ipRateLimiter
 	readLimiter   *ipRateLimiter
 	httpClient    *http.Client
+
+	// bg tracks the fire-and-forget work started by a request but outliving
+	// it (the Discord tee, the AI acknowledgement) — Go's stand-in for the
+	// Worker's ctx.waitUntil. See waitForBackground.
+	bg sync.WaitGroup
+}
+
+// goBackground runs fn detached from the request that started it, while still
+// keeping it visible to shutdown. Never call it with work the response
+// depends on: nothing here can affect what the widget already received.
+func (a *App) goBackground(fn func()) {
+	a.bg.Add(1)
+	go func() {
+		defer a.bg.Done()
+		fn()
+	}()
+}
+
+// waitForBackground blocks until every goBackground task has finished, or
+// until timeout. Called after srv.Shutdown: that waits for in-flight
+// REQUESTS, but these tasks are detached from theirs, so without this the
+// deferred store.Close() races them and their writes are lost.
+func (a *App) waitForBackground(timeout time.Duration) {
+	done := make(chan struct{})
+	go func() {
+		a.bg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(timeout):
+		log.Printf("tyrekick: background tasks still running after %s — exiting anyway", timeout)
+	}
 }
 
 func main() {
@@ -131,6 +189,7 @@ func main() {
 		if err := srv.Shutdown(shutdownCtx); err != nil {
 			log.Printf("tyrekick: graceful shutdown failed: %v", err)
 		}
+		app.waitForBackground(15 * time.Second)
 	}
 }
 
@@ -145,6 +204,18 @@ func logStartup(cfg Config) {
 	log.Printf("tyrekick: shared review %s", onOff(cfg.ReviewKey != ""))
 	log.Printf("tyrekick: ingest rate limit %s", rateDesc(cfg.IngestRateLimit, cfg.IngestRatePeriod))
 	log.Printf("tyrekick: read rate limit %s", rateDesc(cfg.ReadRateLimit, cfg.ReadRatePeriod))
+	log.Printf("tyrekick: rate limits keyed on %s", ipSourceDesc(cfg.TrustProxy))
+	if cfg.TrustProxy {
+		log.Println("tyrekick: TRUST_PROXY=true — only safe if a proxy you control " +
+			"sets X-Forwarded-For and strips client-supplied copies of it")
+	}
+}
+
+func ipSourceDesc(trustProxy bool) string {
+	if trustProxy {
+		return "X-Forwarded-For / X-Real-IP (TRUST_PROXY=true)"
+	}
+	return "the connection's peer address (set TRUST_PROXY=true behind a proxy)"
 }
 
 func onOff(b bool) string {

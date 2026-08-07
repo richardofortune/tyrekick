@@ -19,6 +19,10 @@ Files in this folder:
   `discord.go`, `ai.go`, `uuid.go`** — the server. `store.go` is the SQLite
   layer (schema + queries); `handlers.go` is the HTTP routes and their logic,
   ported one-for-one from `../cloudflare/worker.ts`.
+- **`*_test.go`** — the suite CI runs (`go test -race ./...`). Beyond the
+  usual coverage it pins the behaviours that must not drift from
+  `worker.ts`: the routing table, the triage transitions, what `/shared`
+  withholds, and the numbering gap a declined comment leaves behind.
 - **`Dockerfile`** — multi-stage build producing a small, non-root, fully
   static binary (no CGO — SQLite access is pure Go via `modernc.org/sqlite`).
 - **`docker-compose.yml`** — the fastest way to run it, with a named volume
@@ -27,7 +31,6 @@ Files in this folder:
 ## 1. Run it
 
 ```bash
-cp .env.example .env    # if you create one — or just export vars directly
 export TYREKICK_TOKEN=$(openssl rand -hex 32)
 docker compose up -d --build
 ```
@@ -36,6 +39,17 @@ That builds the image, starts the container, and creates a named volume
 (`tyrekick-data`) mounted at `/data` inside the container — the SQLite file
 lives at `/data/tyrekick.db` and survives `docker compose down` /
 `docker compose up` cycles.
+
+`docker-compose.yml` reads `TYREKICK_TOKEN` from the environment or from a
+`.env` file next to it, and refuses to start without one. Compose picks up
+`.env` automatically, so this works too:
+
+```bash
+echo "TYREKICK_TOKEN=$(openssl rand -hex 32)" > .env
+```
+
+The published port is bound to `127.0.0.1` — see [Exposing it to the
+internet](#exposing-it-to-the-internet) before you change that.
 
 Check it's alive:
 
@@ -78,10 +92,39 @@ HTTP.
 | `AI_DAILY_CAP` | `500` | Global ceiling on AI acknowledgements generated per UTC day |
 | `INGEST_RATE_LIMIT` / `INGEST_RATE_PERIOD_SECONDS` | `15` / `60` | Per-IP limit on `POST /feedback` (the write path). Set the limit to `0` to disable |
 | `READ_RATE_LIMIT` / `READ_RATE_PERIOD_SECONDS` | `120` / `60` | Per-IP limit on `GET /receipts` and `GET /shared`. Set the limit to `0` to disable |
+| `TRUST_PROXY` | `false` | Whether to believe `X-Forwarded-For` / `X-Real-IP` when keying the rate limiters. Set to `true` **only** behind a reverse proxy you control — see below |
 
 Until `TYREKICK_TOKEN` is set, the management routes stay closed — same
 default-secure posture as the Worker (`wrangler secret put TYREKICK_TOKEN`
 there, an env var here).
+
+### Exposing it to the internet
+
+The Worker keys its rate limiters on `CF-Connecting-IP`, which a client
+cannot forge because Cloudflare sets it at the edge. Nothing here has an
+edge, so the equivalent headers — `X-Forwarded-For`, `X-Real-IP` — are
+ordinary request headers that any client can send.
+
+That makes `TRUST_PROXY` a real fork in the deployment, not a tuning knob:
+
+- **`TRUST_PROXY=false` (default).** Rate limits key on the connection's peer
+  address. Correct when this server accepts connections directly. Behind a
+  proxy it is merely useless — every request appears to come from the proxy,
+  so the whole world shares one bucket.
+- **`TRUST_PROXY=true`.** Rate limits key on the first `X-Forwarded-For`
+  entry. Correct **only** if a proxy you control terminates every request and
+  *overwrites* that header rather than appending to a client-supplied one. If
+  a client can reach this server without passing through that proxy, it can
+  mint a fresh rate-limit key per request and the limiter stops existing.
+
+So: put Caddy/nginx/Traefik in front, bind this server to loopback (the
+shipped `docker-compose.yml` does), and set `TRUST_PROXY=true`. Caddy's
+`reverse_proxy` and nginx's `proxy_set_header X-Forwarded-For $remote_addr`
+both overwrite correctly.
+
+Rate limiting is a cost ceiling on a single source, not a DDoS defence —
+distributed abuse across many real IPs still gets through, on this
+destination exactly as on the Worker.
 
 ## Endpoints
 
@@ -157,12 +200,19 @@ Docker initializes it from the image's `/data` ownership on first creation.
   and strongly consistent, since there's no distributed KV eventual
   consistency to work around locally.
 - **Rate limiting**: an in-process per-IP token bucket
-  (`golang.org/x/time/rate`) instead of a Workers Rate Limiting binding. It
-  keys on `X-Forwarded-For` / `X-Real-IP` (falling back to the raw connection
-  address) rather than Cloudflare's unforgeable `CF-Connecting-IP` — put a
-  reverse proxy that sets (and strips any client-supplied copies of) those
-  headers in front of this service if you expose it directly to the
-  internet.
+  (`golang.org/x/time/rate`) instead of a Workers Rate Limiting binding, and
+  it needs to be told where the client's address comes from — see [Exposing
+  it to the internet](#exposing-it-to-the-internet). The bucket map is capped,
+  so a flood of distinct addresses degrades to a shared bucket rather than
+  growing without bound.
+- **AI budget**: the daily cap is exact here. The Worker's counter is a KV
+  read-modify-write, so a burst can overshoot; SQLite reserves a slot and
+  returns the new count in one statement, and hands the slot back if the
+  generation fails.
+- **AI write-back**: the acknowledgement is patched onto the stored record
+  in place (`json_set`), so a triage `PATCH` that lands while the model is
+  generating survives. The Worker rewrites the whole record because KV has no
+  partial update.
 - **No CORS-vs-same-origin split**: there's no Pages Function mode here; the
   server always sends permissive CORS headers, harmless if you proxy it
   same-origin.

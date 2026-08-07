@@ -4,9 +4,19 @@ services:
     # Or, once you publish an image somewhere:
     # image: ghcr.io/<you>/tyrekick-self-hosted:latest
     ports:
-      - "8080:8080"
+      # Bound to loopback: this server speaks plain HTTP and its per-IP rate
+      # limiting only works behind a proxy that sets X-Forwarded-For (see
+      # TRUST_PROXY below). Put Caddy/nginx/Traefik in front and point it at
+      # 127.0.0.1:8080. To expose it directly anyway, change this to
+      # "8080:8080" — and read the rate-limiting note in the README first.
+      - "127.0.0.1:8080:8080"
     environment:
       TYREKICK_TOKEN: ${TYREKICK_TOKEN:?set TYREKICK_TOKEN in .env or the environment}
+      # Set to "true" ONLY when a reverse proxy you control terminates every
+      # request and overwrites X-Forwarded-For. It is a client-supplied header:
+      # trusting it on a directly exposed port lets any caller forge a fresh
+      # rate-limit key per request. Default false = key on the peer address.
+      # TRUST_PROXY: "true"
       # Optional integrations — uncomment and set to enable:
       # DISCORD_WEBHOOK: ${DISCORD_WEBHOOK}
       # TYREKICK_REVIEW_KEY: ${TYREKICK_REVIEW_KEY}

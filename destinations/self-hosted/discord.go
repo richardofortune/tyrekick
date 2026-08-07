@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 )
 
@@ -89,5 +90,8 @@ func postDiscord(client *http.Client, webhook, content string) {
 	if err != nil {
 		return
 	}
+	// Drain before closing so the connection can go back to the pool — a
+	// body abandoned unread forces a fresh TCP+TLS handshake per comment.
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64*1024))
 	_ = resp.Body.Close()
 }

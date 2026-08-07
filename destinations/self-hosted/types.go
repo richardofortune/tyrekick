@@ -53,14 +53,6 @@ func (r FeedbackRecord) anchor() map[string]interface{} {
 	return map[string]interface{}{}
 }
 
-func (r FeedbackRecord) clone() FeedbackRecord {
-	out := make(FeedbackRecord, len(r))
-	for k, v := range r {
-		out[k] = v
-	}
-	return out
-}
-
 func marshalRecord(r FeedbackRecord) (string, error) {
 	b, err := json.Marshal(map[string]interface{}(r))
 	if err != nil {

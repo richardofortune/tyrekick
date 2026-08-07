@@ -89,22 +89,33 @@ func (a *App) requireAuth(w http.ResponseWriter, r *http.Request) bool {
 
 // clientIP extracts the caller's address for rate-limit keying. Unlike the
 // Worker (which trusts Cloudflare's CF-Connecting-IP, unforgeable at the
-// edge), a self-hosted deployment has no single canonical source: this
-// checks X-Forwarded-For / X-Real-IP (set by a reverse proxy in front of
-// this service) and falls back to the raw connection address. If this
-// service is exposed directly to the internet without a trusted proxy in
-// front of it, these headers are client-supplied and spoofable — the
-// deployment's reverse proxy is expected to set (and strip any
-// client-supplied copies of) them.
-func clientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		parts := strings.Split(xff, ",")
-		if ip := strings.TrimSpace(parts[0]); ip != "" {
-			return ip
+// edge), a self-hosted deployment has no canonical source, so the answer
+// depends on whether a proxy is in front of this service — hence trustProxy.
+//
+// trustProxy=false (the default) uses ONLY the connection's peer address.
+// X-Forwarded-For and X-Real-IP are ordinary request headers: on a directly
+// exposed service any client can set them, and believing them would let one
+// caller mint a fresh rate-limit key per request — defeating the limiter and
+// growing its bucket map without bound. Both failures are silent, which is
+// why this is opt-in rather than best-effort.
+//
+// trustProxy=true takes the FIRST entry of X-Forwarded-For (the original
+// client, per the header's append-on-forward convention), then X-Real-IP,
+// then the peer address. That is only sound when the proxy overwrites the
+// header rather than appending to a client-supplied one.
+func clientIP(r *http.Request, trustProxy bool) string {
+	if trustProxy {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			parts := strings.Split(xff, ",")
+			if ip := strings.TrimSpace(parts[0]); ip != "" {
+				return ip
+			}
 		}
-	}
-	if xrip := r.Header.Get("X-Real-IP"); xrip != "" {
-		return strings.TrimSpace(xrip)
+		if xrip := r.Header.Get("X-Real-IP"); xrip != "" {
+			if ip := strings.TrimSpace(xrip); ip != "" {
+				return ip
+			}
+		}
 	}
 	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
 		return host
@@ -119,6 +130,7 @@ func clientIP(r *http.Request) string {
 type ipRateLimiter struct {
 	mu       sync.Mutex
 	limiters map[string]*rateEntry
+	overflow *rate.Limiter // shared bucket once maxTrackedIPs is reached
 	r        rate.Limit
 	burst    int
 }
@@ -128,15 +140,25 @@ type rateEntry struct {
 	lastSeen time.Time
 }
 
+// maxTrackedIPs caps how many per-IP buckets are held at once. The idle
+// sweep alone is not a bound: it runs on a timer, so traffic arriving faster
+// than it reclaims still grows the map. Past this many distinct IPs inside
+// one window, callers share a single overflow bucket — degraded (one noisy
+// source can rate-limit another) but bounded, which is the right trade when
+// the alternative is the limiter exhausting the memory it exists to protect.
+const maxTrackedIPs = 20000
+
 // newIPRateLimiter builds a limiter allowing `limit` requests per
 // `periodSeconds` per IP, or nil if limit <= 0 (disabled).
 func newIPRateLimiter(limit int, periodSeconds int) *ipRateLimiter {
 	if limit <= 0 || periodSeconds <= 0 {
 		return nil
 	}
+	r := rate.Limit(float64(limit) / float64(periodSeconds))
 	l := &ipRateLimiter{
 		limiters: make(map[string]*rateEntry),
-		r:        rate.Limit(float64(limit) / float64(periodSeconds)),
+		overflow: rate.NewLimiter(r, limit),
+		r:        r,
 		burst:    limit,
 	}
 	go l.sweepLoop()
@@ -150,6 +172,16 @@ func (l *ipRateLimiter) allow(ip string) bool {
 	l.mu.Lock()
 	entry, ok := l.limiters[ip]
 	if !ok {
+		// At the cap, try reclaiming idle buckets before falling back — a
+		// steady stream of one-shot IPs should not pin every legitimate
+		// caller onto the shared bucket forever.
+		if len(l.limiters) >= maxTrackedIPs {
+			l.evictIdleLocked(time.Now().Add(-idleEviction))
+		}
+		if len(l.limiters) >= maxTrackedIPs {
+			l.mu.Unlock()
+			return l.overflow.Allow()
+		}
 		entry = &rateEntry{limiter: rate.NewLimiter(l.r, l.burst)}
 		l.limiters[ip] = entry
 	}
@@ -159,30 +191,40 @@ func (l *ipRateLimiter) allow(ip string) bool {
 	return limiter.Allow()
 }
 
-// sweepLoop evicts IPs idle for 10+ minutes so the map doesn't grow
-// unbounded under scraping/scanning traffic.
+const (
+	sweepInterval = 5 * time.Minute
+	idleEviction  = 10 * time.Minute
+)
+
+// sweepLoop evicts IPs idle for 10+ minutes so the map sheds buckets it no
+// longer needs. maxTrackedIPs, not this, is what actually bounds the map.
 func (l *ipRateLimiter) sweepLoop() {
-	ticker := time.NewTicker(5 * time.Minute)
+	ticker := time.NewTicker(sweepInterval)
 	defer ticker.Stop()
 	for range ticker.C {
-		cutoff := time.Now().Add(-10 * time.Minute)
 		l.mu.Lock()
-		for ip, entry := range l.limiters {
-			if entry.lastSeen.Before(cutoff) {
-				delete(l.limiters, ip)
-			}
-		}
+		l.evictIdleLocked(time.Now().Add(-idleEviction))
 		l.mu.Unlock()
 	}
 }
 
-// rateLimited checks limiter against the request's client IP. Returns true
-// if the request may proceed; otherwise it has already written a 429.
-func rateLimited(w http.ResponseWriter, r *http.Request, limiter *ipRateLimiter) bool {
+// evictIdleLocked drops every bucket not touched since cutoff. Caller holds mu.
+func (l *ipRateLimiter) evictIdleLocked(cutoff time.Time) {
+	for ip, entry := range l.limiters {
+		if entry.lastSeen.Before(cutoff) {
+			delete(l.limiters, ip)
+		}
+	}
+}
+
+// allowRequest checks limiter against the request's client IP. Returns true
+// if the request may PROCEED; otherwise it has already written a 429. Named
+// for the allowed case because that is the branch every caller guards on.
+func (a *App) allowRequest(w http.ResponseWriter, r *http.Request, limiter *ipRateLimiter) bool {
 	if limiter == nil {
 		return true
 	}
-	ip := clientIP(r)
+	ip := clientIP(r, a.cfg.TrustProxy)
 	if ip == "" || limiter.allow(ip) {
 		return true
 	}

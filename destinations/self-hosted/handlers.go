@@ -84,12 +84,14 @@ func (a *App) handleIngest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Optional Discord tee + AI acknowledgement: best-effort, run after the
-	// response, never block or fail the ingest.
+	// response, never block or fail the ingest. goBackground rather than a
+	// bare `go` so shutdown waits for them instead of closing the store
+	// out from under their writes.
 	if a.cfg.DiscordWebhook != "" {
-		go a.forwardToDiscord(record)
+		a.goBackground(func() { a.forwardToDiscord(record) })
 	}
 	if a.cfg.AnthropicAPIKey != "" {
-		go a.maybeReply(record)
+		a.goBackground(func() { a.maybeReply(record) })
 	}
 
 	jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "id": id})
@@ -198,7 +200,7 @@ func (a *App) handlePatch(w http.ResponseWriter, r *http.Request, id string) {
 	}
 
 	if a.cfg.DiscordWebhook != "" && (nextStatus == string(StatusResolved) || nextStatus == string(StatusDeclined)) {
-		go a.forwardResolutionToDiscord(record)
+		a.goBackground(func() { a.forwardResolutionToDiscord(record) })
 	}
 
 	jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "item": record})
@@ -277,39 +279,48 @@ func keyMatches(presented, expected string) bool {
 	return diff == 0
 }
 
-func valueOrNil(v interface{}) interface{} {
-	if v == nil {
-		return nil
+// copyIfPresent mirrors JSON.stringify's treatment of `undefined`: a field
+// the payload never carried is OMITTED from the projection rather than
+// materialised as an explicit null. Fields the Worker defaults with `?? null`
+// are set unconditionally instead — see sharedView.
+func copyIfPresent(dst map[string]interface{}, dstKey string, src map[string]interface{}, srcKey string) {
+	if v, ok := src[srcKey]; ok {
+		dst[dstKey] = v
 	}
-	return v
 }
 
 // sharedView projects what one reviewer is allowed to learn about another
 // reviewer's comment. Withheld deliberately: env (fingerprint), page_errors
 // (the prototype's stack traces), url (may carry share-link secrets), and
-// session_id (cross-comment correlation). Mirrors worker.ts's sharedView.
+// session_id (cross-comment correlation). Mirrors worker.ts's sharedView,
+// including which absent fields come back null and which are simply absent.
 func sharedView(r FeedbackRecord, n int) map[string]interface{} {
 	anchor := r.anchor()
-	return map[string]interface{}{
+
+	// `?? null` in the Worker — always present, null when the record has none.
+	out := map[string]interface{}{
 		"id":              r.id(),
 		"n":               n,
-		"created_at":      r.createdAt(),
-		"app_version":     r.getString("app_version"),
-		"route":           r.route(),
-		"body":            r.body(),
-		"reviewer_name":   valueOrNil(r["reviewer_name"]),
 		"status":          r.status(),
+		"reviewer_name":   r["reviewer_name"],
 		"resolved_at":     r["resolved_at"],
 		"resolution_note": r["resolution_note"],
-		"anchor": map[string]interface{}{
-			"x_pct":    anchor["x_pct"],
-			"y_pct":    anchor["y_pct"],
-			"selector": valueOrNil(anchor["selector"]),
-			"viewport": anchor["viewport"],
-			"element":  valueOrNil(anchor["element"]),
-			"context":  valueOrNil(anchor["context"]),
-		},
 	}
+	// Passed through bare in the Worker — absent stays absent.
+	for _, key := range []string{"created_at", "app_version", "route", "body"} {
+		copyIfPresent(out, key, r, key)
+	}
+
+	anchorOut := map[string]interface{}{
+		"selector": anchor["selector"],
+		"element":  anchor["element"],
+		"context":  anchor["context"],
+	}
+	for _, key := range []string{"x_pct", "y_pct", "viewport"} {
+		copyIfPresent(anchorOut, key, anchor, key)
+	}
+	out["anchor"] = anchorOut
+	return out
 }
 
 func (a *App) handleShared(w http.ResponseWriter, r *http.Request) {
@@ -411,7 +422,11 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path := strings.TrimRight(r.URL.Path, "/")
+	// Route on the ESCAPED path, the direct equivalent of worker.ts's
+	// url.pathname. r.URL.Path is already percent-decoded, so routing on it
+	// would decode a second time below and make any id containing a literal
+	// "%" unreachable at every encoding.
+	path := strings.TrimRight(r.URL.EscapedPath(), "/")
 	if path == "" {
 		path = "/"
 	}
@@ -420,7 +435,7 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if path == "/" {
 		switch r.Method {
 		case http.MethodPost:
-			if rateLimited(w, r, a.ingestLimiter) {
+			if a.allowRequest(w, r, a.ingestLimiter) {
 				a.handleIngest(w, r)
 			}
 		case http.MethodGet:
@@ -445,7 +460,7 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if strings.HasSuffix(path, "/feedback") {
 		switch r.Method {
 		case http.MethodPost:
-			if rateLimited(w, r, a.ingestLimiter) {
+			if a.allowRequest(w, r, a.ingestLimiter) {
 				a.handleIngest(w, r)
 			}
 		case http.MethodGet:
@@ -463,7 +478,7 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			jsonResponse(w, http.StatusMethodNotAllowed, map[string]interface{}{"ok": false, "error": "method_not_allowed"})
 			return
 		}
-		if rateLimited(w, r, a.readLimiter) {
+		if a.allowRequest(w, r, a.readLimiter) {
 			a.handleReceipts(w, r)
 		}
 		return
@@ -474,7 +489,7 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			jsonResponse(w, http.StatusMethodNotAllowed, map[string]interface{}{"ok": false, "error": "method_not_allowed"})
 			return
 		}
-		if rateLimited(w, r, a.readLimiter) {
+		if a.allowRequest(w, r, a.readLimiter) {
 			a.handleShared(w, r)
 		}
 		return

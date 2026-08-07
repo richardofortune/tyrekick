@@ -254,29 +254,71 @@ func (s *Store) ListByProject(project string) ([]FeedbackRecord, error) {
 	return items, rows.Err()
 }
 
-// UnderDailyCap reports whether today's AI-reply generation count is below
-// cap. Mirrors worker.ts's underDailyCap: fails CLOSED (false) on any error,
-// since "can't confirm we're under budget" must mean "don't spend".
-func (s *Store) UnderDailyCap(day string, cap int) bool {
-	var used int
-	err := s.db.QueryRow(`SELECT count FROM ai_counters WHERE day = ?`, day).Scan(&used)
-	if err == sql.ErrNoRows {
-		return cap > 0
+// SetAIReply writes ai_reply onto one stored record IN PLACE, leaving every
+// other field as it is on disk.
+//
+// Deliberately not SaveRecord: the AI call takes seconds, and a triage PATCH
+// arriving in that window would be silently reverted by writing back the
+// whole pre-call copy of the record. worker.ts has that race (KV offers no
+// partial update); SQL does, so the port fixes it rather than inheriting it.
+//
+// Returns false if the record vanished, so the caller can decline to charge
+// the daily budget for a reply nobody will read.
+func (s *Store) SetAIReply(id, reply string) (bool, error) {
+	res, err := s.db.Exec(
+		`UPDATE feedback SET record = json_set(record, '$.ai_reply', ?) WHERE id = ?`,
+		reply, id,
+	)
+	if err != nil {
+		return false, fmt.Errorf("set ai_reply: %w", err)
 	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("set ai_reply rows: %w", err)
+	}
+	return n > 0, nil
+}
+
+// ReserveAIReply atomically claims one slot from today's AI budget, returning
+// true only if there was one to claim.
+//
+// worker.ts checks the counter and increments it later, because KV has no
+// atomic increment — so a burst of concurrent ingests all read the same
+// under-budget value and sail past the cap together. SQLite increments and
+// reports the new value in ONE statement, so the cap is a real ceiling here.
+// Reserve-then-spend (rather than spend-then-count) is what makes it one;
+// ReleaseAIReply hands the slot back when the spend doesn't happen.
+//
+// Fails CLOSED on any error: "can't confirm we're under budget" means "don't
+// spend".
+func (s *Store) ReserveAIReply(day string, dailyCap int) bool {
+	if dailyCap <= 0 {
+		return false
+	}
+	var used int
+	err := s.db.QueryRow(
+		`INSERT INTO ai_counters (day, count) VALUES (?, 1)
+		 ON CONFLICT(day) DO UPDATE SET count = count + 1
+		 RETURNING count`,
+		day,
+	).Scan(&used)
 	if err != nil {
 		return false
 	}
-	return used < cap
+	if used > dailyCap {
+		// Over budget. Hand the slot straight back so a day that stays busy
+		// doesn't inflate the counter past the cap indefinitely.
+		_ = s.ReleaseAIReply(day)
+		return false
+	}
+	return true
 }
 
-// BumpDailyCounter increments today's AI-reply generation count by one.
-// Best-effort: errors are the caller's problem to swallow, matching
-// worker.ts's bumpDailyCounter (a miscount only ever lets a few extra
-// replies through, never fewer).
-func (s *Store) BumpDailyCounter(day string) error {
+// ReleaseAIReply returns an unspent reservation to today's budget. Clamped at
+// zero so a stray release can never create budget that was never reserved.
+func (s *Store) ReleaseAIReply(day string) error {
 	_, err := s.db.Exec(
-		`INSERT INTO ai_counters (day, count) VALUES (?, 1)
-		 ON CONFLICT(day) DO UPDATE SET count = count + 1`,
+		`UPDATE ai_counters SET count = count - 1 WHERE day = ? AND count > 0`,
 		day,
 	)
 	return err
