@@ -8,6 +8,8 @@
  *   TYREKICK_TOKEN — bearer token (wrangler secret put TYREKICK_TOKEN)
  */
 
+import { readFileSync } from "node:fs";
+
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -33,9 +35,20 @@ if (!envResult.ok) {
 const env = envResult.env;
 const client = new TyrekickClient({ baseUrl: env.url, token: env.token });
 
+// Read rather than hardcode: this said "0.1.0" for three releases, so every
+// client saw the wrong version on handshake. dist/server.js sits one level
+// under the package root, same as the widget CLI's bin/lib.mjs.
+function readVersion(): string {
+  try {
+    return JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
+  } catch {
+    return "0.0.0";
+  }
+}
+
 const server = new McpServer({
   name: "tyrekick",
-  version: "0.1.0",
+  version: readVersion(),
 });
 
 server.registerTool(
