@@ -1,0 +1,7 @@
+tyrekick-server
+# `go build` with no -o names the binary after the directory.
+self-hosted
+*.db
+*.db-wal
+*.db-shm
+data/
