@@ -1,5 +1,5 @@
 {
-  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.richardofortune/tyrekick",
   "description": "Read and resolve human feedback pinned on your live prototype, straight from your coding agent.",
   "repository": {
