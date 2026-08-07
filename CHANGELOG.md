@@ -3,7 +3,7 @@
 Notable changes to the `tyrekick` widget. The MCP server (`tyrekick-mcp`) is
 versioned separately; see [`mcp/`](mcp/).
 
-## Unreleased
+## 0.7.0
 
 - **`init --url <url>` writes `og:url`.** 0.5.0 omitted it because `init` cannot
   know the deploy URL, and that is still true — nothing guesses one. But without
