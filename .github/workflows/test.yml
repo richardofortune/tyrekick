@@ -1,0 +1,55 @@
+name: Test
+
+# Runs on every PR and every push to main, so a merge can't land red.
+#
+# The `tyrekick` job is deliberately the same five steps as the package's
+# `prepublishOnly` — CI and publish assert the same thing, so a PR that goes
+# green cannot fail at publish time. Keep them in step if either changes.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  tyrekick:
+    name: widget
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # check:clean greps tracked files, so it needs the checkout, not the build.
+      - run: npm run check:clean
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm run size
+      - run: npm test
+
+  mcp:
+    name: mcp server
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mcp
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mcp/package-lock.json
+
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
