@@ -1,12 +1,25 @@
 name: Publish to npm
 
 # Manually triggered from the Actions tab: pick which package to publish.
-# Publishes with Sigstore provenance (npm attests the package was built
-# from this repo + workflow), which requires id-token: write and a public repo.
 #
-# Auth: set an npm granular "automation" token as the NPM_TOKEN repo secret.
-# If you later configure npm Trusted Publishing (OIDC) for these packages,
-# the NODE_AUTH_TOKEN lines can be deleted entirely.
+# Auth is npm Trusted Publishing (OIDC): no token is stored anywhere. GitHub
+# mints a short-lived signed statement of "this repo, running this workflow",
+# and npm checks it against the trusted publisher configured on the package.
+# That is what `id-token: write` below is for. Sigstore provenance is then
+# generated automatically, so there is no --provenance flag to pass.
+#
+# This only works if BOTH packages have a trusted publisher registered at
+# npmjs.com -> package -> Settings -> Trusted Publisher. Same values for each,
+# all case-sensitive:
+#
+#   org/user: richardofortune   repository: tyrekick
+#   workflow filename: publish.yml   environment: (blank)
+#
+# Node 24, not 22, is deliberate: OIDC needs npm >= 11.5.1 and no Node 22
+# release ships npm 11 (22.x tops out at npm 10.9.x). Do not lower it.
+#
+# Adding NODE_AUTH_TOKEN back would override OIDC — if a token is ever needed
+# for private deps, scope it to the `npm ci` step only, never to `npm publish`.
 
 on:
   workflow_dispatch:
@@ -31,22 +44,31 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           registry-url: https://registry.npmjs.org
+
+      # Fail here with a named reason rather than at `npm publish`, where too
+      # old a CLI shows up as an opaque ENEEDAUTH — it just doesn't attempt
+      # OIDC and reports "need auth" as if no credential existed.
+      - name: Check npm is new enough for OIDC
+        run: |
+          v=$(npm --version)
+          if [ "$(printf '%s\n11.5.1\n' "$v" | sort -V | head -1)" != "11.5.1" ]; then
+            echo "npm $v is too old for trusted publishing (needs >= 11.5.1)."
+            echo "Raise node-version, or add: npm install -g npm@latest"
+            exit 1
+          fi
+          echo "npm $v — OK for trusted publishing"
 
       - name: Publish tyrekick
         if: inputs.package == 'tyrekick'
         run: |
           npm ci
-          npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          npm publish --access public
 
       - name: Publish tyrekick-mcp
         if: inputs.package == 'tyrekick-mcp'
         working-directory: mcp
         run: |
           npm ci
-          npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          npm publish --access public
