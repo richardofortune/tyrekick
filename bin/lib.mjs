@@ -176,7 +176,11 @@ export function canonicalUrl(input) {
     return null;
   }
   if (u.protocol !== "http:" && u.protocol !== "https:") return null;
-  if (!u.hostname || !u.hostname.includes(".")) return null; // localhost is not shareable
+  // A dotted hostname, which rules out `localhost` and other single-label names.
+  // ponytail: not a public-host check — 127.0.0.1 and 192.168.x.x still pass.
+  // Tighten to reject loopback/RFC1918/.local if a wrong-but-plausible og:url
+  // turns out to bite in practice.
+  if (!u.hostname || !u.hostname.includes(".")) return null;
   if (u.username || u.password) return null;
   u.hash = "";
   return u.href;

@@ -83,7 +83,7 @@ if it has one. **Nothing is overwritten** — if you already set `og:` tags, the
 are left alone and `init` says so. `--no-preview` skips the step entirely.
 
 `init` cannot guess where the page will be deployed, so it never invents an
-`og:url` — but you can tell it:
+`og:url`. If you already know the address, pass it yourself:
 
 ```bash
 npx tyrekick init --webhook <url> --url https://trip-planner.pages.dev/
@@ -91,9 +91,13 @@ npx tyrekick init --webhook <url> --url https://trip-planner.pages.dev/
 
 That writes `og:url`, which is what stops a crawler treating a preview
 subdomain as a separate page. The URL is validated first: it must be an
-absolute `http(s)` address on a public host, and a typo fails the command
-before anything is written rather than pointing every unfurl at the wrong page.
-A bare host is fine — `trip-planner.pages.dev` is read as `https://`.
+absolute `http(s)` address whose hostname has a dot in it, so `localhost` is
+refused, and a typo fails the command before anything is written rather than
+pointing every unfurl at the wrong page. A bare host is fine —
+`trip-planner.pages.dev` is read as `https://`.
+
+Nothing passes `--url` for you. It is opt-in, and omitting it leaves `init`
+behaving exactly as it did before.
 
 Pass `--url` on a page that already has `og:` tags but no `og:url` and it adds
 just that one line; everything the author set is still left alone.

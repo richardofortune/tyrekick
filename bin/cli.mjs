@@ -103,7 +103,7 @@ async function initCmd(args) {
   // Validated before anything is written: a wrong og:url sends every unfurl to
   // the wrong page, and a typo here should not leave a half-finished install.
   const reviewUrl = args.url ? canonicalUrl(args.url) : null;
-  if (args.url && !reviewUrl) fail(`--url must be an absolute http(s) URL on a public host, got "${args.url}"`);
+  if (args.url && !reviewUrl) fail(`--url must be an absolute http(s) URL on a named host, got "${args.url}"`);
 
   // 3. Inject (idempotent)
   const html = readFileSync(file, "utf8");
