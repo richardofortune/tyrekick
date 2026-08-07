@@ -1,0 +1,6 @@
+.git
+*.db
+*.db-wal
+*.db-shm
+data/
+tyrekick-server
