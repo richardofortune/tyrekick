@@ -267,6 +267,16 @@ describe("readinessNote", () => {
     );
   });
 
+  it("flags the dangerous shared-review + AI-reply combination", () => {
+    const note = readinessNote(
+      makeStatus({ reviewKey: "rk", secrets: { known: true, names: new Set(["ANTHROPIC_API_KEY"]) } }),
+    );
+    expect(note).toMatch(/BOTH on/);
+    expect(note).toMatch(/read the thread/);
+    // The combined warning replaces the standalone shared-review line (no redundancy).
+    expect(note).not.toMatch(/only for a private link/);
+  });
+
   it("says nothing for the discord transport", () => {
     expect(readinessNote(makeStatus({ transport: "discord" }))).toBeNull();
   });
