@@ -9,6 +9,7 @@ playwright-report/
 .claude/
 .vscode/
 wrangler.local.toml
+.vexp
 
 # Internal / personal working docs — kept local, not published
 docs/blog.md
