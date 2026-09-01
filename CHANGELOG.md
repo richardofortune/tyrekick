@@ -3,6 +3,80 @@
 Notable changes to the `tyrekick` widget. The MCP server (`tyrekick-mcp`) is
 versioned separately; see [`mcp/`](mcp/).
 
+## 0.8.0
+
+- **A review can stand down.** A review link is not one-shot: feedback comes in
+  waves, and between waves a worker deployed for one afternoon's prototype keeps
+  accepting anonymous writes from anyone who still has the URL. The only way to
+  stop that was to delete the worker, which also deletes every comment in it.
+
+  The worker gained one optional wrangler `[vars]` entry,
+  `TYREKICK_OPEN_UNTIL`, an ISO-8601 instant after which `POST` ingest answers
+  `403 {"ok":false,"error":"review_closed","open_until":"…"}` before it reads
+  the body. It is a var rather than a secret because it is readable on purpose,
+  and it fails open in every unclear case: absent, empty or unparseable all mean
+  the review never closes. So a typo can fail to close a review and can never
+  silently shut a live one, and every worker deployed before this release
+  behaves exactly as it does today, redeployed or not.
+
+  Closing gates ingest and nothing else. The URL does not move, the page still
+  loads, and `GET /feedback`, `/feedback/:id`, `PATCH`, `/receipts` and
+  `/shared` all keep answering, so your agent still pulls the full history out
+  of a closed project and reviewers' pins still turn green as you resolve their
+  comments. Reopening bumps the instant and redeploys: same worker name, same KV
+  namespace, same link.
+
+  New commands: `npx tyrekick close`, `npx tyrekick reopen --days 14` (or
+  `--never`), and `npx tyrekick status --all`, which lists every deployment this
+  machine has wired and probes each one live for whether it is still open. That
+  list is bookmarked in `~/.tyrekick/deployments.json`, outside any repo, three
+  fields per entry: worker URL, project slug, date added. No tokens, no webhook
+  URLs, no cached state, so nothing in it can go stale or leak.
+
+  The widget adds no requests. It learns a review is closed from the 403 rather
+  than probing on load, which would tax every load of every open review to
+  improve the rare closed one. `transport/webhook.ts` now returns the
+  destination's typed `error` instead of a bare boolean, so the composer can say
+  "This review has closed — your comment wasn't sent." with the Copy button and
+  no dead Retry, and a restored failed pin's drawer button reads "Review closed"
+  instead of offering a retry that cannot succeed. Retry behaviour is unchanged
+  for every other kind of failure.
+
+  Workers wired by the `make-reviewable` skill now get a 14-day window by
+  default. Existing workers keep no window until you set one. Redeploy from
+  `destinations/cloudflare/worker.ts` to get the gate; the widget change alone
+  does nothing.
+
+- **`remove --teardown` deletes `.tyrekick.json`.** The per-deployment pointer file
+  was written at spin-up but nothing in the CLI knew it existed, so a thorough
+  teardown could delete the worker, the KV namespace, the Pages project and the MCP
+  registration, and still leave behind a file naming all four. A plain `remove`
+  keeps it and says so, because the worker and its feedback are still live.
+
+- **`status --all` shows the unread count per deployment**, and `--open` lists the
+  comments under each with their ids. The window probe stays unauthenticated so a
+  worker whose token this machine never held still lists; its count shows `—`, which
+  means "not known", never zero. Tokens come from the environment only
+  (`TYREKICK_TOKEN_<project>`, then `TYREKICK_TOKEN`) — the registry holds no secrets.
+
+- **`status` finds the widget that `init` installed.** `init --file` accepts any
+  path, but every later command re-guessed from four conventional names, so a
+  project whose page is not `index.html` was told its install was missing — and
+  Worker, link preview and review state all went blank with it. `init` now records
+  the path in `.tyrekick.json` and `findWidget()` reads it first, falling back to
+  the conventional names when the recorded file no longer holds a tag.
+
+- **`status` recognises a per-project MCP server.** One machine holds many of these
+  and they cannot all be called `tyrekick`, so the check now tries the documented
+  name and then `tyrekick-<project>`, reports which one answered, and `remove`
+  unregisters the name that actually exists rather than assuming the default.
+
+- **Connectivity checks no longer count as feedback.** `tyrekick init` and the
+  make-reviewable skill each post one comment to prove the destination works, and
+  storing those as "open" left them in the queue forever. They now carry
+  `kind: "verification"` and land already resolved, still mirrored to Discord but
+  never counted as something a person said. Payloads without the field are unchanged.
+
 ## 0.7.0
 
 - **`init --url <url>` writes `og:url`.** 0.5.0 omitted it because `init` cannot

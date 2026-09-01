@@ -25,7 +25,10 @@ Check before asking anything:
 
 - **Already installed?** Grep the HTML entry for `data-webhook` or
   `tyrekick`. If present, skip to step 6 (the ask) — never redirect an
-  existing destination.
+  existing destination. One check first: run `npx tyrekick status`. If the
+  Review row says closed, the endpoint refuses new comments, so run
+  `npx tyrekick reopen --days 14` before you send anyone the link (same URL,
+  same store). See step 5.
 - **Previous decisions?** Check the project's CLAUDE.md (or equivalent) for a
   recorded Tyrekick destination / project slug. Reuse them.
 - **Does the app even have a home?** The loop needs the page to load from an
@@ -67,6 +70,13 @@ Pick by who's reviewing:
   ```bash
   npx wrangler pages deploy <dir> --project-name <slug> --branch main
   ```
+  **Verify you got the apex URL, not a preview alias.** Cloudflare serves
+  `<slug>.pages.dev` from the project's production branch, which is not always
+  `main`. If the apex 404s while `<branch>.<slug>.pages.dev` works, check
+  `npx wrangler pages deployment list --project-name <slug>` — an `Environment`
+  of `Preview` means you deployed to the wrong branch. Redeploy with `--branch`
+  set to the production branch. Hand reviewers the apex URL; a preview alias
+  changes per branch.
 - **Remote reviewers, a local-only running app** (e.g. a Python/Flask server) →
   open a tunnel to it:
   ```bash
@@ -101,6 +111,29 @@ alone is the demo of it.
 Prereq: `npx wrangler whoami` — if unauthenticated, stop and ask the human to
 run `npx wrangler login` (interactive; you cannot do it for them).
 
+**`whoami` passing is not enough to create KV.** Since 2026-08-22 Cloudflare
+grants OAuth scopes individually: only *User Read* and *Background Access* are
+Required on the consent screen, and **KV Write** is an *Additional Access*
+toggle. A login without it fails step 2 below with a bare
+`Authentication error [code: 10000]` that names no scope, while `wrangler deploy`
+and `wrangler pages deploy` keep working — so nothing looks broken until KV.
+The local `scopes` line in `~/Library/Preferences/.wrangler/config/default.toml`
+records what Wrangler *requested*, not what was granted; don't treat it as proof.
+Pinning an older Wrangler doesn't help either.
+
+If KV 401s, don't diagnose it as a billing or account problem. Ask the human for
+one of:
+
+- `npx wrangler login` again, turning on **KV Write** (or **Full access**), or
+- a **CLOUDFLARE_API_TOKEN** from the *Edit Cloudflare Workers* template
+  (includes Workers KV Storage:Edit). Have them write it to a file outside the
+  repo — `~/.tyrekick/cloudflare.env`, `chmod 600` — so it stays out of the
+  transcript, then `set -a; . ~/.tyrekick/cloudflare.env; set +a` before each
+  wrangler call. Shell state does not persist between your tool calls.
+
+An API token is the better default for agent-driven setup: it can't be silently
+narrowed by a consent screen the human clicked through.
+
 Get the template (three files: `worker.ts`, `wrangler.toml`, `README.md`):
 
 1. If this repo IS tyrekick or already vendors it: use
@@ -116,7 +149,16 @@ Then, from the template directory:
 #    edit wrangler.toml:  name = "tyrekick-<project-slug>"
 
 # 2. KV namespace — paste the printed id over REPLACE_WITH_YOUR_KV_NAMESPACE_ID
-npx wrangler kv namespace create FEEDBACK
+#    Titles are unique per account, so plain "FEEDBACK" errors once a second
+#    project exists. The binding stays FEEDBACK; only the title is per-project.
+npx wrangler kv namespace create <project-slug>-FEEDBACK
+
+# 2b. Default stand-down. Set the review window to 14 days out BEFORE the first
+#     deploy, so it costs no extra deploy. An open ingest endpoint that nobody
+#     is watching accepts anonymous writes forever.
+#     edit wrangler.toml:  TYREKICK_OPEN_UNTIL = "<now + 14 days, ISO-8601 Z>"
+#     Compute the instant yourself and write it into the existing [vars] block.
+#     Leaving it "" is valid and means the review never closes.
 
 # 3. Deploy (prints the workers.dev URL — record it)
 npx wrangler deploy
@@ -134,13 +176,18 @@ Verify before moving on:
 ```bash
 curl -s -X POST https://tyrekick-<slug>.<acct>.workers.dev/feedback \
   -H 'Content-Type: application/json' \
-  -d '{"schema":2,"id":"'$(uuidgen)'","created_at":"'$(date -u +%FT%TZ)'","project_name":"<slug>","app_version":"test","route":"/","url":"skill-verify","body":"Worker verification from make-reviewable","reviewer_name":null,"session_id":"'$(uuidgen)'","anchor":{"x_pct":0,"y_pct":0,"selector":null,"viewport":{"w":0,"h":0},"element":null,"context":{"heading":null,"landmark":null}},"env":{"user_agent":"skill","language":"en","screen":{"w":0,"h":0},"dpr":1,"dark":false,"touch":false},"page_errors":[]}'
-# expect {"ok":true,...}
+  -d '{"schema":2,"id":"'$(uuidgen)'","created_at":"'$(date -u +%FT%TZ)'","project_name":"<slug>","app_version":"test","route":"/","url":"skill-verify","body":"Worker verification from make-reviewable","kind":"verification","reviewer_name":null,"session_id":"'$(uuidgen)'","anchor":{"x_pct":0,"y_pct":0,"selector":null,"viewport":{"w":0,"h":0},"element":null,"context":{"heading":null,"landmark":null}},"env":{"user_agent":"skill","language":"en","screen":{"w":0,"h":0},"dpr":1,"dark":false,"touch":false},"page_errors":[]}'
+# expect {"ok":true,...}  — "kind":"verification" makes it land already resolved,
+#                            so it never shows up as an open comment nobody wrote
 
 curl -s -H "Authorization: Bearer $TOKEN" \
   https://tyrekick-<slug>.<acct>.workers.dev/feedback?limit=1
 # expect the record back
 ```
+
+A `403 {"ok":false,"error":"review_closed"}` from that POST is not a broken
+deploy: it means the review window you set has already lapsed (check the instant
+you wrote in step 2b). Run `npx tyrekick reopen --days 14` and verify again.
 
 If the user has a Discord mirror set, tell them a verification message just
 appeared in their channel.
@@ -163,6 +210,20 @@ claude mcp add tyrekick \
   --env TYREKICK_TOKEN=$TOKEN \
   -- npx tyrekick-mcp
 ```
+
+`init` also bookmarks worker destinations in `~/.tyrekick/deployments.json`
+(outside any repo, no secrets in it: worker URL, project slug, date added), so
+`npx tyrekick status --all` can later list every review this machine has wired
+and probe which are still open. Nothing to write by hand; running `init` is what
+registers it. If you wired a worker without `init`, run `npx tyrekick status`
+once in the project directory and it registers there.
+
+**Shipping a second wave?** If this project already has a worker and you are
+shipping a fix for a review that has closed, do NOT redeploy the worker and do
+NOT deploy a new one. Run `npx tyrekick reopen --days 14` from the project
+directory. The URL, the KV store and every stored comment stay exactly where
+they are, so the link you already sent reviewers still works. Use
+`npx tyrekick close` when the wave is done.
 
 If the app was **unhosted**, host it now (step 2) — deploy/serve the copy that
 now carries the widget, and use *that* URL as the review link.
@@ -218,7 +279,9 @@ someone else?"
 
 Tell the human, in plain words: the one URL to share (and, if you hosted it,
 where it now lives), where feedback goes, whether their agent can read it back
-(worker: yes / Discord-only: no — and how to upgrade later), and the drafted
+(worker: yes / Discord-only: no — and how to upgrade later), when the review
+stops accepting comments (the 14-day window from step 2b, and that
+`npx tyrekick reopen --days 14` reopens it on the same URL), and the drafted
 ask. If anything failed (wrangler auth, Pages/tunnel, KV create, test POST),
 say exactly which step and what you need.
 

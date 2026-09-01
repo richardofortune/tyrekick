@@ -7,6 +7,8 @@ import type { FeedbackPayload, Transport } from "../types";
 
 export interface SendResult {
   ok: boolean;
+  /** The destination's snake_case failure reason, when it sent a readable one. */
+  error?: string;
 }
 
 const TIMEOUT_MS = 8000;
@@ -17,16 +19,19 @@ export async function send(
   transport: Transport,
   payload: FeedbackPayload,
 ): Promise<SendResult> {
-  if (await once(webhook, transport, payload)) return { ok: true };
+  const first = await once(webhook, transport, payload);
+  // A closed review is a deterministic refusal — retrying only makes the
+  // reviewer wait 2s to be told no twice.
+  if (first.ok || first.error === "review_closed") return first;
   await delay(RETRY_MS);
-  return { ok: await once(webhook, transport, payload) };
+  return once(webhook, transport, payload);
 }
 
 async function once(
   webhook: string,
   transport: Transport,
   payload: FeedbackPayload,
-): Promise<boolean> {
+): Promise<SendResult> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try {
@@ -40,25 +45,25 @@ async function once(
       body,
       signal: ctrl.signal,
     });
-    if (!res.ok) return false;
-    if (transport === "discord") return true; // 2xx (Discord: 204) is enough
-    // json: success unless the body explicitly says { "ok": false }
+    if (transport === "discord") return { ok: res.ok }; // 2xx (Discord: 204) is enough
+    // json: read the body even on a non-2xx — that is where the reason lives.
     let text = "";
     try {
       text = await res.text();
     } catch {
-      return true;
+      return { ok: res.ok };
     }
-    if (!text) return true;
+    let parsed: { ok?: unknown; error?: unknown } | null = null;
     try {
-      const parsed = JSON.parse(text) as { ok?: unknown } | null;
-      if (parsed && parsed.ok === false) return false;
+      parsed = text ? (JSON.parse(text) as { ok?: unknown; error?: unknown }) : null;
     } catch {
-      /* non-JSON 2xx body — treat as success */
+      /* non-JSON body — judge on status alone */
     }
-    return true;
+    const error = parsed && typeof parsed.error === "string" ? parsed.error : undefined;
+    if (!res.ok || (parsed && parsed.ok === false)) return { ok: false, error };
+    return { ok: true };
   } catch {
-    return false; // timeout / abort / network error
+    return { ok: false }; // timeout / abort / network error
   } finally {
     clearTimeout(timer);
   }

@@ -52,10 +52,51 @@ it detects an unhosted page and hosts it before wiring the loop. See
   POSTs (the Cloudflare template does) — or use a same-origin function path.
 - **Your endpoint returns `{"ok":false}`** — Tyrekick treats that as failure
   even on HTTP 200, by contract.
+- **`403 {"ok":false,"error":"review_closed"}`** is not an outage. The
+  deployment's review window has lapsed and it is refusing new comments on
+  purpose. See [below](#this-review-has-closed).
 - Delivery has an 8s timeout and one automatic retry after 2s. After final
   failure the reviewer gets Retry / Copy-your-comment, and the unsent comment
   survives reloads (Retry/Discard in the drawer) — so nothing is lost while
   you fix the endpoint.
+
+## "This review has closed"
+
+The composer says `This review has closed — your comment wasn't sent.` when the
+worker refuses ingest with `403 {"ok":false,"error":"review_closed"}`. Nothing
+is broken: the worker is up, the page is fine, and every comment already
+collected is still there. The review window has simply lapsed.
+
+Reviews stand down on purpose. A worker's `wrangler.toml` can carry an optional
+`TYREKICK_OPEN_UNTIL` instant, and workers wired by the `make-reviewable` skill
+get 14 days by default, so an endpoint nobody is watching stops accepting
+anonymous writes instead of staying open forever. Leaving the value empty (the
+default in a hand-rolled deploy) means it never closes.
+
+To take another wave of feedback, from the project directory:
+
+```bash
+npx tyrekick reopen --days 14   # same URL, same store, same pins
+npx tyrekick reopen --never     # remove the window entirely
+npx tyrekick close              # stop accepting comments again
+```
+
+**The URL never changes.** Closing and reopening edit one config line and
+redeploy, so the link you already shared keeps working, and so does everything
+except the POST: `GET /feedback`, `/feedback/:id`, `PATCH`, `/receipts` and
+`/shared` all keep answering while closed. Your agent can still read and resolve
+the backlog of a closed review, and a reviewer's pins still turn green when you
+do.
+
+`npx tyrekick status` shows the current state of the project you are in.
+`npx tyrekick status --all` lists every deployment this machine has wired, with
+a live check on each, which is the fastest way to find old review endpoints you
+left open.
+
+One limit worth knowing: the window lives in the project's `wrangler.toml`, so
+closing or reopening needs that config on disk. A worker deployed from a
+directory you no longer have cannot be closed until you recreate its config
+(same worker name and KV id) and deploy that.
 
 ## Pins are in the wrong place
 
@@ -87,6 +128,12 @@ Only with `persist: true` (default), keyed per page:
 The destination remains the comments' home — receipts are pointers, not a
 shadow copy, and "Got it" (or Retry/Discard for unsent work) cleans the keys
 up as you go. `persist: false` reads/writes nothing.
+
+That is everything in the reviewer's browser. On *your* machine the CLI also
+keeps `~/.tyrekick/deployments.json`, outside any repo: a bookmark list of the
+worker URLs it has wired, so `npx tyrekick status --all` knows what to check. It
+holds a URL, a project slug and a date per entry, no tokens and no feedback, and
+it is plain JSON you can edit or delete.
 
 ## Privacy — what is never captured
 
@@ -121,6 +168,57 @@ Yes — by design, and it matters only on public URLs. See
 [Destinations → Protecting a public deployment](destinations.md#protecting-a-public-deployment)
 for the hosting-based decision table (short version: public URL → use the
 worker, never a raw Discord webhook).
+
+## `Authentication error [code: 10000]` when creating the KV namespace
+
+```
+✘ [ERROR] A request to the Cloudflare API failed.
+  Authentication error [code: 10000]
+```
+
+Your Wrangler login is missing the **KV Write** scope. The message names neither
+the scope nor the product, and `wrangler deploy` / `wrangler pages deploy` keep
+working, so the login looks healthy until you touch storage. D1 and R2 fail the
+same way.
+
+Fix it at the source — see
+[Cloudflare destination → step 1](../destinations/cloudflare/README.md#1-install-wrangler-and-grant-it-kv-access),
+which covers granting the scope or using an API token instead.
+
+One trap while diagnosing: the `scopes` line in Wrangler's
+`config/default.toml` records what Wrangler *requested*, not what Cloudflare
+granted, so it can list `workers_kv:write` on a login that can't use it. It
+isn't evidence either way.
+
+## `wrangler kv namespace create FEEDBACK` says it already exists
+
+```
+✘ [ERROR] A KV namespace with the title "FEEDBACK" already exists.
+```
+
+Namespace titles are unique per account, so the plain name is taken as soon as
+you set up a second project. Name it per project:
+
+```bash
+wrangler kv namespace create <project-slug>-FEEDBACK
+```
+
+The binding in `wrangler.toml` stays `FEEDBACK` — only the title changes, and
+`worker.ts` needs no edit.
+
+## The Pages URL 404s after deploying
+
+If `<project>.pages.dev` returns 404 while `<branch>.<project>.pages.dev` works,
+the deploy landed on a **preview** branch. Cloudflare serves the apex domain from
+the project's production branch only, and that branch isn't always `main`.
+
+```bash
+wrangler pages deployment list --project-name <project>   # Environment column
+```
+
+If it says `Preview`, redeploy with `--branch` set to the project's production
+branch. This matters for review links: a preview alias works, but it changes per
+branch, so the URL you hand reviewers should be the apex one.
 
 ## Known limitations
 

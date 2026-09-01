@@ -7,6 +7,20 @@ name = "tyrekick-feedback"
 main = "worker.ts"
 compatibility_date = "2024-09-23"
 
+# --- Review window (a plain var, NOT a secret — readable on purpose) --------
+# ISO-8601 instant after which POST ingest answers 403 review_closed. The URL
+# never changes, and the page, the stored data, read-back, receipts and the
+# shared review all keep working — a closed review is still fully readable by
+# your agent.
+#
+# Empty or absent = never closes (this is what every worker deployed before
+# this var existed does, and what a fresh manual deploy does).
+#
+#   npx tyrekick close             stop accepting comments now
+#   npx tyrekick reopen --days 14  accept them again for another wave
+[vars]
+TYREKICK_OPEN_UNTIL = ""
+
 # --- Workers KV binding ---------------------------------------------------
 # The Worker writes each comment to this namespace via the binding `FEEDBACK`.
 #

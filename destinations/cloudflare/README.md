@@ -10,15 +10,49 @@ Files in this folder:
 
 - **`worker.ts`** — the Worker (handles CORS, validates, stores in KV, and
   serves a token-gated REST API for reading feedback back).
-- **`wrangler.toml`** — config with the KV binding placeholder.
+- **`wrangler.toml`** — config with the KV binding placeholder and the
+  optional review window (step 6).
 
-## 1. Install Wrangler
+## 1. Install Wrangler and grant it KV access
 
 Wrangler is Cloudflare's CLI. You need a (free) Cloudflare account.
 
 ```bash
 npm install -g wrangler   # or: npm install -D wrangler
 wrangler login            # opens a browser to authorize
+```
+
+**Turn on KV Write on the consent screen.** Cloudflare grants OAuth scopes
+individually ([since 2026-08-22](https://developers.cloudflare.com/changelog/post/2026-08-22-wrangler-mcp-optional-oauth-scopes/)).
+Only *User Read* and *Background Access* are listed as **Required**; everything
+this worker needs sits below under **Additional Access**, as separate toggles:
+
+| Scope | Needed for |
+| --- | --- |
+| **KV Write** | creating and using the feedback namespace (step 2) |
+| **Workers Scripts Write** | deploying the worker and storing its secrets (step 4) |
+| **Pages Write** | only if you also host the reviewed page on Pages |
+
+**Full access** grants the lot, which is what Wrangler used to receive before
+scopes became selectable.
+
+Clicking straight through leaves KV off, and step 2 then fails with a bare
+`Authentication error [code: 10000]` that names no scope — while `wrangler deploy`
+carries on working, so nothing looks wrong until you hit storage.
+
+### Or use an API token
+
+Steadier for scripted and agent-driven setup, since it can't be narrowed by a
+consent screen someone clicked through. Create one from the **Edit Cloudflare
+Workers** template — it already includes Workers KV Storage:Edit — and keep it
+out of the repo:
+
+```bash
+mkdir -p ~/.tyrekick && chmod 700 ~/.tyrekick
+printf 'CLOUDFLARE_API_TOKEN=%s\n' "$TOKEN" > ~/.tyrekick/cloudflare.env
+chmod 600 ~/.tyrekick/cloudflare.env
+
+set -a; . ~/.tyrekick/cloudflare.env; set +a   # before each wrangler call
 ```
 
 ## 2. Create the KV namespace
@@ -30,6 +64,15 @@ wrangler kv namespace create FEEDBACK
 ```
 
 It prints a block containing an `id`. Copy that id.
+
+Titles are unique per account, so once you have a second project this errors with
+`A KV namespace with the title "FEEDBACK" already exists.` Name it per project
+instead — the binding stays `FEEDBACK`, only the title changes, and `worker.ts`
+needs no edit either way:
+
+```bash
+wrangler kv namespace create <project-slug>-FEEDBACK
+```
 
 ## 3. Paste the id into wrangler.toml
 
@@ -82,6 +125,48 @@ Or the zero-JS `data-*` form (IIFE build):
 Submit a comment. On success the Worker responds `{"ok":true}`; on a bad request
 it responds `{"ok":false,"error":"..."}`, which the widget treats as a failure so
 the reviewer can copy their text instead of losing it.
+
+## 6. Close the review when the wave is over (optional)
+
+Feedback comes in waves: ship, gather, fix, ship again. Between waves the worker
+keeps accepting anonymous comments from anyone who still has the URL, which is
+rarely what you want six months later. `wrangler.toml` carries an optional
+review window for that:
+
+```toml
+[vars]
+TYREKICK_OPEN_UNTIL = "2026-09-15T00:00:00.000Z"
+```
+
+An ISO-8601 instant after which `POST` ingest answers **403**
+`{"ok":false,"error":"review_closed","open_until":"…"}`. It is a plain var, not
+a secret, so you can read it and so changing it is one edited line plus
+`wrangler deploy`.
+
+Empty or absent means the review never closes. That is what the shipped template
+does if you leave the line alone, and what every worker deployed before this var
+existed does. A value the worker cannot parse also means never closes: a typo can
+fail to close a review, it can never silently shut a live one.
+
+**Closing gates ingest only.** The URL does not change, the page still loads,
+every stored comment stays where it is, and `GET /feedback`, `/feedback/:id`,
+`PATCH /feedback/:id`, `/receipts` and `/shared` all keep answering. Your agent
+can still pull the whole history out of a closed project, and a reviewer's pins
+still turn green when you resolve their comments.
+
+From the project directory the CLI edits that line and redeploys for you:
+
+```bash
+npx tyrekick close              # stop accepting comments now
+npx tyrekick reopen --days 14   # take another wave, same URL
+npx tyrekick reopen --never     # remove the window
+npx tyrekick status --all       # every deployment this machine has wired, and which are still open
+```
+
+Nothing moves when you close or reopen: same worker name, same KV namespace,
+same URL, same stored feedback. To take the worker down for good instead, that
+is `npx tyrekick remove --teardown`, which deletes the KV namespace and every
+comment in it.
 
 ## Same-origin option (no CORS at all)
 
@@ -180,6 +265,12 @@ comment; the route accepts exact ids only (batch capped at 50), silently omits
 unknown ids, and returns nothing but
 `{ id, status, resolved_at, resolution_note }` per hit. It cannot list, search,
 or enumerate.
+
+The envelope also reports the deployment's review window, as
+`"review":{"state":"open"|"closed","open_until":…}`. That is public information
+(the window is a var, not a secret) and it is how `npx tyrekick status` checks
+whether a deployment still accepts comments without holding its token. The
+per-receipt fields are unchanged.
 
 ### `GET /` — is this thing on?
 

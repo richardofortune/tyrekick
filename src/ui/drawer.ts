@@ -11,6 +11,7 @@
 import type { Drawer, Pin, Runtime } from "../index";
 import { buildPayload } from "./panel";
 import { send } from "../transport/webhook";
+import type { SendResult } from "../transport/webhook";
 
 const LIST_ICON =
   '<svg viewBox="0 0 24 24" aria-hidden="true">' +
@@ -85,17 +86,17 @@ export function createDrawer(rt: Runtime): Drawer {
     if (btn.disabled) return;
     btn.disabled = true;
     btn.textContent = "Sending…";
-    let ok = false;
+    let res: SendResult = { ok: false };
     let sentId: string | null = null;
     try {
       const payload = buildPayload(rt, p, p.body, p.reviewer, p.at || undefined);
       sentId = payload.id;
-      ok = (await send(rt.cfg.webhook, rt.cfg.transport, payload)).ok;
+      res = await send(rt.cfg.webhook, rt.cfg.transport, payload);
     } catch {
-      ok = false;
+      res = { ok: false };
     }
     if (p.status !== "failed") return; // discarded or re-sent elsewhere mid-flight
-    if (ok) {
+    if (res.ok) {
       p.status = "sent";
       p.deliveredId = sentId;
       if (p.el) {
@@ -105,6 +106,8 @@ export function createDrawer(rt: Runtime): Drawer {
       rt.savePins();
       rt.saveReceipts();
       refresh();
+    } else if (res.error === "review_closed") {
+      btn.textContent = "Review closed"; // stays disabled
     } else {
       btn.disabled = false;
       btn.textContent = "Retry";

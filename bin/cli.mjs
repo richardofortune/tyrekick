@@ -6,6 +6,7 @@
  *   npx tyrekick init               wire the widget into a project (≤2 questions)
  *   npx tyrekick init --yes …       non-interactive (for agents/CI)
  *   npx tyrekick status             print a one-shot status dashboard
+ *   npx tyrekick close | reopen     stop / resume accepting comments (same URL, data kept)
  *   npx tyrekick disable | enable   remove/restore the widget, keeping all feedback data
  *   npx tyrekick remove [--teardown] safely uninstall (add --teardown to also delete the cloud worker)
  *
@@ -25,6 +26,9 @@ import {
   sendTest,
   printMcpAdd,
   cmdStatus,
+  cmdWindow,
+  rememberDeployment,
+  recordWidgetFile,
   cmdDisable,
   cmdEnable,
   cmdRemove,
@@ -41,6 +45,10 @@ Usage:
   npx tyrekick                 Interactive management menu (default)
   npx tyrekick init [options]  Wire the feedback widget into a project
   npx tyrekick status          Show what's installed (widget / worker / MCP)
+  npx tyrekick status --all    Every deployment this CLI has seen, which are still open, and their unread count
+  npx tyrekick status --all --open   ...and list the open comments under each
+  npx tyrekick close           Stop accepting new comments. Same URL; page, data and read-back stay live
+  npx tyrekick reopen          Accept comments again for another wave (--days 14, or --never to remove the window)
   npx tyrekick disable         Remove the widget but keep the worker + all data (reversible)
   npx tyrekick enable          Restore a disabled widget
   npx tyrekick remove          Uninstall local wiring (widget tag + MCP registration)
@@ -69,6 +77,10 @@ function parseArgs(argv) {
     else if (a === "--no-test") args.noTest = true;
     else if (a === "--no-preview") args.noPreview = true;
     else if (a === "--teardown") args.teardown = true;
+    else if (a === "--all") args.all = true;
+    else if (a === "--open") args.open = true;
+    else if (a === "--never") args.never = true;
+    else if (a === "--days") args.days = argv[++i];
     else if (a === "--webhook") args.webhook = argv[++i];
     else if (a === "--file") args.file = argv[++i];
     else if (a === "--project") args.project = argv[++i];
@@ -122,6 +134,8 @@ async function initCmd(args) {
       : html + "\n" + tag;
     writeFileSync(file, updated);
     console.log(`✓ injected widget into ${file} (project: ${project}, version: ${appVersion}, transport: ${transport})`);
+    // So `status`, `disable` and `remove` find it again without re-guessing.
+    recordWidgetFile(file);
   }
 
   // 3b. Link preview. The review URL gets pasted into a chat, and that paste is
@@ -169,9 +183,16 @@ async function initCmd(args) {
       await sendTest(webhook, transport, project, appVersion);
       console.log(`✓ test comment sent — check your ${transport === "discord" ? "Discord channel" : "worker store"}`);
     } catch (e) {
-      console.log(`⚠ test comment failed (${e.message}) — the tag is installed; check the webhook URL.`);
+      // `review_closed` is a working worker standing down, not a broken install.
+      console.log(
+        e.message === "review_closed"
+          ? `⚠ the worker is deployed but its review window is closed — run \`npx tyrekick reopen\`.`
+          : `⚠ test comment failed (${e.message}) — the tag is installed; check the webhook URL.`,
+      );
     }
   }
+  // Bookmark the worker so `tyrekick status --all` can find it again later.
+  if (transport === "json") rememberDeployment(webhook, project);
   rl?.close();
 
   // 5. Agent loop pointer (worker destinations only)
@@ -195,7 +216,11 @@ async function main() {
     case "init":
       return initCmd(args);
     case "status":
-      return cmdStatus();
+      return cmdStatus({ all: !!args.all, open: !!args.open });
+    case "close":
+      return cmdWindow({ days: args.never ? null : Number(args.days ?? 0), verb: "close" });
+    case "reopen":
+      return cmdWindow({ days: args.never ? null : Number(args.days ?? 14), verb: "reopen" });
     case "disable":
       return cmdDisable();
     case "enable":
@@ -209,7 +234,7 @@ async function main() {
       console.log(HELP);
       return;
     default:
-      fail(`Unknown command "${cmd}". Try: npx tyrekick (menu) — or init | status | disable | enable | remove`);
+      fail(`Unknown command "${cmd}". Try: npx tyrekick (menu) — or init | status | close | reopen | disable | enable | remove`);
   }
 }
 

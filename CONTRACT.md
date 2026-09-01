@@ -67,7 +67,13 @@ throw — null on any failure.
 ## Transport (`transport/webhook.ts`)
 - POST, 8s timeout (AbortController), 1 automatic retry after 2s backoff.
 - transport "json": `Content-Type: application/json`, body = payload JSON. Success =
-  HTTP 2xx AND (no body OR body is not `{"ok":false}`).
+  HTTP 2xx AND (no body OR body is not `{"ok":false}`). A failure response whose
+  JSON body carries a string `error` propagates that string to the caller as
+  `SendResult.error`, so the body is read on the failure path too (read it only
+  on 2xx and the reason can never reach the UI). `error: "review_closed"`
+  suppresses the retry, because a closed review is a deterministic refusal and
+  retrying only makes the reviewer wait 2s to be told no twice. No other value,
+  and no untyped failure, changes retry behaviour.
 - transport "discord": POST `{ content: string }` as JSON to the webhook. Success =
   HTTP 2xx (Discord = 204). Format a readable message, e.g.:
   `**{project} {version}** — {reviewer|Anonymous}\n{body}\n{anchor} · <{url}>`.
@@ -94,6 +100,12 @@ throw — null on any failure.
   subject stays visible on the page.
 - Submit: inline spinner → success "✓ Sent — thank you" 1.5s then close, pin solid.
   Failure → retry → "Couldn't send. Copy your comment?" + Copy button, pin red.
+  A `review_closed` refusal skips the retry and reads "This review has closed —
+  your comment wasn't sent." with the Copy button beside it and the send button
+  DISABLED, since there is nothing to retry against. The pin still goes red and
+  the draft is still saved, exactly as on any other failure, so the text is never
+  lost. A restored failed pin's drawer Retry button reads "Review closed" and
+  stays disabled rather than offering a retry that cannot succeed.
 - Pins are first-class interactive objects, numbered in submission order. They
   render whenever any exist — dimmed while the widget is idle, full strength
   while comment mode / composer / drawer is engaged — because they are the
@@ -146,6 +158,14 @@ The worker keeps its open ingest and grows a token-gated management face:
   stay frictionless). Validation as before (schema===1, non-empty body, truncate >2000).
   Stored record = the FeedbackPayload PLUS server fields:
   `{ status: "open", received_at: <ISO>, resolved_at: null, resolution_note: null }`.
+  Gated by the review window (see the review-window addendum): once
+  `TYREKICK_OPEN_UNTIL` has passed, both routes answer **403**
+  `{"ok":false,"error":"review_closed","open_until":"<the configured instant>"}`
+  with CORS headers, before the body is read, so a closed review parses nothing,
+  stores nothing and tees nothing. The guard is the first statement of
+  `handleIngest`, never the router, so it covers both routes and any future
+  third; the ingest rate limiter still runs ahead of it, because a closed review
+  must not be a free unmetered endpoint.
 - **GET /feedback?status=&route=&since=&limit=** — list records, newest first.
   `status` = open|resolved, `since` = ISO timestamp, `limit` default 50 max 200.
 - **GET /feedback/:id** — full single record.
@@ -202,7 +222,11 @@ happened to it. Worker transport only (Discord is write-only by design).
   unguessable UUIDv4 capabilities known only to the submitting browser and the
   store; exact-id lookups only, batch hard-capped at 50, unknown ids silently
   omitted (no existence oracle), response carries only
-  `{id, status, resolved_at, resolution_note}`. PATCH additionally mirrors
+  `{id, status, resolved_at, resolution_note}` per hit. The response envelope
+  also carries `review: {state, open_until}` on both return sites, including the
+  empty-`ids` early return, which is how the CLI reads a deployment's window
+  without a token; the per-receipt projection is unchanged, and readers ignore
+  unknown keys. PATCH additionally mirrors
   resolved/declined transitions to `DISCORD_WEBHOOK` when set (best-effort,
   waitUntil, failures swallowed).
 - **Widget**: on successful delivery, `Pin.deliveredId` = the payload id and a
@@ -422,6 +446,111 @@ is built on `aggregate` or it is not built.
 - **"What was served" is seen through pin anchors** (the flagged element or
   section), not the agent's build or diffs — `retrospective` reasons over
   what reviewers pointed at, never over source.
+
+## Verification comments are not feedback (addendum, 2026-09-01)
+
+`tyrekick init` and the `make-reviewable` skill each POST one comment to prove the
+destination works. Both now set `kind: "verification"` on the payload.
+
+- The worker stores such a record with `status: "resolved"`, `resolved_at` equal to
+  `received_at`, and a `resolution_note` saying it was a connectivity check. It is
+  stored, not discarded: the proof that the pipe works is the point.
+- It still tees to Discord, because mirroring is one of the things the check proves.
+- It does NOT trigger an AI reply. Budget is for people.
+- `kind` is optional. Absent, or any other value, stores `status: "open"` exactly as
+  before, so every browser payload and every older client is unaffected.
+
+Rationale: stored as "open", these accumulated. Across 17 live workers, 16 of 31 open
+comments were the tooling talking about itself, and seven projects reported a backlog
+no human had written. A queue that counts its own setup handshake cannot be trusted,
+and an untrusted queue gets ignored.
+
+## Review window: a review stands down (addendum, 2026-09-01)
+
+A review link is not one-shot. Feedback arrives in waves: ship, gather, fix,
+ship again. Until now every deployment was permanent and every ingest endpoint
+stayed open forever, so a worker deployed for one afternoon in July still
+accepts anonymous writes from anyone holding the URL. A deployment now has three
+states:
+
+- **open**: solicits and stores. Today's behaviour, and what every deployment
+  that predates this addendum keeps doing.
+- **closed**: ingest refuses. The page, the stored data, read-back, receipts
+  and shared review all keep working. **The URL never changes.**
+- **retired**: explicit teardown (`tyrekick remove --teardown`), which deletes
+  the worker, the KV namespace and every comment in it. Never automatic.
+
+### The var
+`TYREKICK_OPEN_UNTIL`: a single ISO-8601 instant, a wrangler `[vars]` entry and
+deliberately **NOT a secret**. It is readable on purpose. The widget is told the
+review is closed and when, so there is nothing left to hide, and a plain var is
+what lets `close` / `reopen` be one edited line plus a deploy.
+
+**Fail open, in every unclear case.** Absent, empty, whitespace-only and
+unparseable all mean the review NEVER closes. An operator typo (`"next friday"`)
+can therefore fail to close a review; it can never silently shut a live one.
+This is the single point of failure for back-compat and the one function that
+carries an exhaustive unit test.
+
+### What closing does and does not do
+Closing gates **INGEST ONLY**, and the gate lives in `handleIngest` rather than
+the router so both ingest routes and any future third are covered by one check.
+`GET /feedback`, `GET /feedback/:id`, `PATCH /feedback/:id`, `GET /receipts` and
+`GET /shared` never consult it. An agent pulls the full history out of a closed
+project over MCP exactly as before, and a reviewer on a closed page still sees
+their pins turn green when the builder resolves them.
+
+Reopening bumps the instant and redeploys. Worker name, KV namespace id, routes
+and the reviewed page's URL are untouched, by construction: the link already
+shared keeps working across close and reopen, forever.
+
+### Discovery
+`GET /receipts` carries `review: {state, open_until}` in its envelope (see the
+receipts addendum). `open_until` is echoed while the instant is still in the
+FUTURE too, which is what lets a client say "open, closes 15 Sep" rather than
+only open or closed. `GET /` is unchanged and gains no `review` key: it
+advertises route names only and is not a configuration oracle.
+
+The widget does **no pre-flight probe**. It learns a review is closed from the
+403 when someone submits. Probing on load would tax every load of every open
+review, which is the overwhelmingly common case, to improve the rare one, and
+the reject-on-submit path has to exist regardless because a window can lapse
+mid-sentence. If reviewers do complain about typing into a void, the upgrade is
+a few lines on the `/receipts` call the widget already makes, which is exactly
+why the window rides that response.
+
+### CLI and registry
+- `tyrekick close` (now), `tyrekick reopen --days N` (default 14) and
+  `tyrekick reopen --never` (removes the window) edit the one `[vars]` line and
+  run `wrangler deploy`. No confirmation prompt: closing destroys nothing and is
+  one command to undo.
+- `tyrekick status` gains a Review row; `tyrekick status --all` lists every
+  deployment this machine has wired, probing each live under one `Promise.all`.
+- The registry is `~/.tyrekick/deployments.json` (dir `0700`, file `0600`),
+  OUTSIDE any repo: `{version:1, deployments:[{url, project, added_at}]}`.
+  Three fields, and it **holds no secrets by construction**. There is no field
+  a credential could land in. It caches no window state either: everything
+  printed comes from a live probe at display time, so staleness is a non-event
+  rather than a sync problem. It never auto-prunes on a failed probe (a deleted
+  worker, a laptop on a plane and a DNS blip are one failed request either way);
+  the only automatic deletion is a successful `remove --teardown`.
+
+### Back-compat, which is the point
+Every worker deployed before this var existed keeps behaving identically, even
+after its code is redeployed: with no `TYREKICK_OPEN_UNTIL` set, the check
+returns null and ingest runs byte-identically. A new widget against an old
+worker sees no `review` key and does not read one. An old widget (pinned CDN,
+already on someone's page) against a newly closed worker sees a non-2xx and
+renders today's "Couldn't send. Copy your comment?". Degraded, not broken, and
+the text is still recoverable via Copy and the saved draft.
+
+**The honest limit.** The var lives in `[vars]`, so changing it needs
+`wrangler deploy`, which needs a local wrangler config. A worker deployed from a
+throwaway directory cannot be closed until its config is recreated. This feature
+gives every new deployment a default stand-down and can list the old ones; it
+cannot retroactively close them. If closing those matters more than the var
+being readable, the thing to revisit is the var-not-secret decision, not this
+design.
 
 ## File ownership (updated 2026-07-05)
 The original multi-agent lanes (core / destinations / demo / tests as separate

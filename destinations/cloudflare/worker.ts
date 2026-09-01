@@ -67,6 +67,14 @@ interface FeedbackPayload {
   body: string;
   reviewer_name: string | null;
   session_id: string;
+  /**
+   * "verification" marks a connectivity check written by the tooling itself
+   * (`tyrekick init`, make-reviewable) rather than a comment a person left. It
+   * is stored like anything else but lands already resolved, so a project's open
+   * queue only ever counts what a human actually said. Absent on every payload
+   * from a browser, and on every client older than this field.
+   */
+  kind?: string;
   anchor: {
     x_pct: number;
     y_pct: number;
@@ -151,6 +159,13 @@ interface Env {
    * every request (they are never open by default). Ingest ignores it.
    */
   TYREKICK_TOKEN?: string;
+  /**
+   * Optional review window (a wrangler [vars] entry — NOT a secret, readable
+   * on purpose). ISO-8601 instant after which POST ingest is refused. Absent,
+   * empty or unparseable = the review NEVER closes, which is exactly how every
+   * worker deployed before this var existed behaves.
+   */
+  TYREKICK_OPEN_UNTIL?: string;
   /**
    * Optional: a Discord webhook URL (`wrangler secret put DISCORD_WEBHOOK`).
    * When set, every successfully stored comment is ALSO forwarded to Discord
@@ -312,6 +327,23 @@ function requireAuth(request: Request, env: Env): Response | null {
     return json({ ok: false, error: "unauthorized" }, 401);
   }
   return null;
+}
+
+/** The configured close instant once it has passed; null while the review is open. */
+function closedSince(env: Env): string | null {
+  const raw = (env.TYREKICK_OPEN_UNTIL ?? "").trim();
+  if (!raw) return null; // absent/empty = never closes (every pre-window worker)
+  const t = Date.parse(raw);
+  if (!Number.isFinite(t)) return null; // a typo must never silently shut a live review
+  return Date.now() >= t ? raw : null;
+}
+
+/** Public window state. A var, not a secret, so this discloses nothing. */
+function reviewState(env: Env): { state: "open" | "closed"; open_until: string | null } {
+  return {
+    state: closedSince(env) ? "closed" : "open",
+    open_until: (env.TYREKICK_OPEN_UNTIL ?? "").trim() || null,
+  };
 }
 
 /** Read + parse one stored record. Returns null if missing or corrupt. */
@@ -543,7 +575,7 @@ async function handleReceipts(request: Request, env: Env): Promise<Response> {
     .map((s) => s.trim())
     .filter((s) => UUID_SHAPE.test(s))
     .slice(0, RECEIPTS_MAX_IDS);
-  if (ids.length === 0) return json({ ok: true, receipts: [] });
+  if (ids.length === 0) return json({ ok: true, receipts: [], review: reviewState(env) });
 
   let records: Array<FeedbackRecord | null>;
   try {
@@ -560,7 +592,7 @@ async function handleReceipts(request: Request, env: Env): Promise<Response> {
       resolution_note: r.resolution_note ?? null,
       ai_reply: r.ai_reply ?? null,
     }));
-  return json({ ok: true, receipts });
+  return json({ ok: true, receipts, review: reviewState(env) });
 }
 
 /**
@@ -742,6 +774,11 @@ async function handleShared(request: Request, env: Env): Promise<Response> {
 
 /** POST / and POST /feedback — open ingest of a widget FeedbackPayload. */
 async function handleIngest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  // Review window: closed gates INGEST ONLY. Checked before the body is read,
+  // so a closed review parses nothing, stores nothing and tees nothing.
+  const closed = closedSince(env);
+  if (closed) return json({ ok: false, error: "review_closed", open_until: closed }, 403);
+
   // Parse the JSON body defensively — malformed JSON must not throw.
   let payload: FeedbackPayload;
   try {
@@ -769,12 +806,15 @@ async function handleIngest(request: Request, env: Env, ctx: ExecutionContext): 
   payload.id = payload.id || crypto.randomUUID();
   payload.created_at = payload.created_at || receivedAt;
 
+  // A connectivity check proves the pipe works and then has no further purpose.
+  // Storing it as "open" is what leaves a project reporting a backlog nobody wrote.
+  const isCheck = payload.kind === "verification";
   const record: FeedbackRecord = {
     ...payload,
-    status: "open",
+    status: isCheck ? "resolved" : "open",
     received_at: receivedAt,
-    resolved_at: null,
-    resolution_note: null,
+    resolved_at: isCheck ? receivedAt : null,
+    resolution_note: isCheck ? "Automatic: connectivity check, not reviewer feedback." : null,
     ai_reply: null,
   };
 
@@ -797,7 +837,7 @@ async function handleIngest(request: Request, env: Env, ctx: ExecutionContext): 
   // record has no reply yet, generate one asynchronously. Same best-effort
   // posture as Discord forwarding — runs after the response via waitUntil and
   // any failure is swallowed, so it can never block or break an ingest.
-  if (env.ANTHROPIC_API_KEY && !record.ai_reply) {
+  if (env.ANTHROPIC_API_KEY && !record.ai_reply && !isCheck) {
     ctx.waitUntil(maybeReply(env, record).catch(() => {}));
   }
 

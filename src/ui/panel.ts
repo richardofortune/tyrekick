@@ -12,6 +12,7 @@ import type { Panel, Pin, Runtime } from "../index";
 import { env, nowISO, route, uuid } from "../capture/context";
 import { getPageErrors } from "../capture/errors";
 import { send } from "../transport/webhook";
+import type { SendResult } from "../transport/webhook";
 import type { FeedbackPayload } from "../types";
 
 const MAX = 2000;
@@ -323,17 +324,16 @@ export function createPanel(rt: Runtime): Panel {
     pin.reviewer = rt.cfg.fieldName ? name || null : null;
     pin.at = payload.created_at;
 
-    let ok = false;
+    let res: SendResult = { ok: false };
     try {
-      const res = await send(rt.cfg.webhook, rt.cfg.transport, payload);
-      ok = res.ok;
+      res = await send(rt.cfg.webhook, rt.cfg.transport, payload);
     } catch {
-      ok = false; // send() shouldn't throw, but never let it bubble
+      res = { ok: false }; // send() shouldn't throw, but never let it bubble
     }
     sending = false;
     if (!el) return; // composer was closed/destroyed mid-flight
 
-    if (ok) {
+    if (res.ok) {
       pin.status = "sent";
       pin.deliveredId = payload.id; // the receipt capability for this comment
       if (pin.el) {
@@ -354,16 +354,18 @@ export function createPanel(rt: Runtime): Panel {
       rt.saveDraft({ body: typed, name });
       rt.savePins();
       rt.drawer.refresh();
-      showFailure(body);
+      showFailure(body, res.error === "review_closed");
     }
   }
 
-  function showFailure(body: string): void {
+  function showFailure(body: string, closed: boolean): void {
     setSending(false);
     submitBtn.innerHTML = "Retry";
-    submitBtn.disabled = false;
+    submitBtn.disabled = closed; // never offer a retry against a permanent refusal
     status.className = "status err";
-    status.textContent = "Couldn't send. ";
+    status.textContent = closed
+      ? "This review has closed \u2014 your comment wasn't sent. "
+      : "Couldn't send. ";
     const copy = document.createElement("button");
     copy.type = "button";
     copy.className = "btn-cancel";
