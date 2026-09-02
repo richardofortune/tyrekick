@@ -32,6 +32,7 @@ import {
   recordWidgetFile,
   readProjectConfig,
   mcpNames,
+  probeWindow,
 } from "../../bin/lib.mjs";
 
 // Belt and braces: never let a bad hoist write into someone's real home.
@@ -683,5 +684,56 @@ describe("mcpNames", () => {
       for (const n of mcpNames(evil)) expect(n).toMatch(/^[A-Za-z0-9_-]+$/);
     }
     expect(mcpNames("foo; rm -rf ~")).toEqual(["tyrekick", "tyrekick-foo--rm--rf"]);
+  });
+});
+
+// "cannot close" and "not scheduled to close" are different facts. A worker
+// deployed before the window existed answers /receipts with no `review` key,
+// and reporting that as "open, no window" hid every un-upgraded worker behind
+// the same words as an upgraded one with no date set.
+describe("probeWindow — can this worker close at all?", () => {
+  const reply = async (body: unknown, ok = true) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok, json: async () => body }));
+    try {
+      return await probeWindow("https://w.example.dev/feedback");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  };
+
+  it("an old worker (no review key) reports gated:false", async () => {
+    const p = await reply({ ok: true, receipts: [] });
+    expect(p.reachable).toBe(true);
+    expect(p.gated).toBe(false);
+  });
+
+  it("a current worker with no date reports gated:true and open", async () => {
+    const p = await reply({ ok: true, receipts: [], review: { state: "open", open_until: null } });
+    expect(p.gated).toBe(true);
+    expect(p.state).toBe("open");
+    expect(p.open_until).toBeNull();
+  });
+
+  it("a scheduled worker carries the instant", async () => {
+    const p = await reply({
+      ok: true, receipts: [],
+      review: { state: "open", open_until: "2026-09-15T00:00:00.000Z" },
+    });
+    expect(p.gated).toBe(true);
+    expect(p.open_until).toBe("2026-09-15T00:00:00.000Z");
+  });
+
+  it("a closed worker reports closed", async () => {
+    const p = await reply({
+      ok: true, receipts: [],
+      review: { state: "closed", open_until: "2026-08-01T00:00:00.000Z" },
+    });
+    expect(p.state).toBe("closed");
+  });
+
+  it("unreachable is not mistaken for un-gated", async () => {
+    const p = await reply(null, false);
+    expect(p.reachable).toBe(false);
+    expect(p.gated).toBe(false);
   });
 });

@@ -84,6 +84,12 @@ versioned separately; see [`mcp/`](mcp/).
   projects reported a backlog no human had written. Resolve them once and the
   counts are honest from then on.
 
+- **`status --all` says which workers cannot close yet.** A worker deployed before
+  this release answers `/receipts` with no `review` key at all, which the list read
+  as "open, no window" — the same words as a current worker with no date set. One
+  cannot close; the other simply is not scheduled to. Un-upgraded workers now show
+  `! no gate — redeploy`, so the list stops implying a stand-down that is not there.
+
 ## 0.7.0
 
 - **`init --url <url>` writes `og:url`.** 0.5.0 omitted it because `init` cannot

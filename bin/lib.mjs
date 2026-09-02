@@ -505,15 +505,20 @@ export async function probeOpen(webhook, token) {
 }
 
 export async function probeWindow(webhook) {
-  const unreachable = { reachable: false, state: "open", open_until: null };
+  const unreachable = { reachable: false, gated: false, state: "open", open_until: null };
   if (!webhook) return unreachable;
   try {
     const res = await fetch(`${baseUrl(webhook)}/receipts?ids=`, { signal: AbortSignal.timeout(4000) });
     if (!res.ok) return unreachable;
     const body = await res.json().catch(() => null);
+    // A worker deployed before the window existed answers /receipts without a
+    // `review` key at all. That is a different fact from a current worker with
+    // no date set — one CANNOT close, the other simply is not scheduled to —
+    // and reporting both as "open, no window" hid every un-upgraded worker.
     const r = body && body.review;
     return {
       reachable: true,
+      gated: !!r,
       state: r && r.state === "closed" ? "closed" : "open",
       open_until: r && typeof r.open_until === "string" ? r.open_until : null,
     };
@@ -869,9 +874,11 @@ async function statusAll({ open = false } = {}) {
     const when = shortDate(p.open_until);
     const [icon, state] = !p.reachable
       ? ["?", "unreachable"]
-      : p.state === "closed"
-        ? ["⏸", `closed${when ? ` ${when}` : ""}`]
-        : ["✔", when ? `open until ${when}` : "open, no window"];
+      : !p.gated
+        ? ["!", "no gate — redeploy"]
+        : p.state === "closed"
+          ? ["⏸", `closed${when ? ` ${when}` : ""}`]
+          : ["✔", when ? `open until ${when}` : "open, no window"];
     const box = inboxes[i];
     const count = box === null ? "—" : box.length ? `${box.length} open` : "clear";
     console.log(
