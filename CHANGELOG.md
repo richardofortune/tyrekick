@@ -73,9 +73,16 @@ versioned separately; see [`mcp/`](mcp/).
 
 - **Connectivity checks no longer count as feedback.** `tyrekick init` and the
   make-reviewable skill each post one comment to prove the destination works, and
-  storing those as "open" left them in the queue forever. They now carry
-  `kind: "verification"` and land already resolved, still mirrored to Discord but
-  never counted as something a person said. Payloads without the field are unchanged.
+  storing those as "open" left them in the queue forever. Nobody saw that until
+  now, because until now nothing counted an open queue; it matters because
+  `status --all` above does. They now carry `kind: "verification"` and land
+  already resolved, still mirrored to Discord but never counted as something a
+  person said. Payloads without the field are unchanged.
+
+  Existing stores still hold theirs. On an account with seventeen workers, sixteen
+  of thirty-one open comments were the tooling talking about itself, and seven
+  projects reported a backlog no human had written. Resolve them once and the
+  counts are honest from then on.
 
 ## 0.7.0
 
