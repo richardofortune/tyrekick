@@ -53,3 +53,45 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
+
+  self-hosted:
+    name: self-hosted destination
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: destinations/self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          # Keep in step with the `go` directive in go.mod and the builder
+          # image in the Dockerfile.
+          go-version: "1.25"
+          cache-dependency-path: destinations/self-hosted/go.sum
+
+      # Formatting is a build failure, not a review comment.
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:"; echo "$unformatted"; exit 1
+          fi
+
+      # A go.mod that isn't tidy hides direct dependencies among the indirect
+      # ones, so `go mod tidy` must be a no-op on a green branch.
+      - name: go mod tidy is a no-op
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+      - run: go vet ./...
+
+      # -race because the Discord tee and the AI acknowledgement both run
+      # detached from the request that started them.
+      - run: go test -race ./...
+
+      # The image is the deliverable, so build it here rather than finding out
+      # at deploy time.
+      - name: docker build
+        run: docker build -t tyrekick-self-hosted:ci .

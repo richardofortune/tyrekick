@@ -1,0 +1,38 @@
+services:
+  tyrekick:
+    build: .
+    # Or, once you publish an image somewhere:
+    # image: ghcr.io/<you>/tyrekick-self-hosted:latest
+    ports:
+      # Bound to loopback: this server speaks plain HTTP and its per-IP rate
+      # limiting only works behind a proxy that sets X-Forwarded-For (see
+      # TRUST_PROXY below). Put Caddy/nginx/Traefik in front and point it at
+      # 127.0.0.1:8080. To expose it directly anyway, change this to
+      # "8080:8080" — and read the rate-limiting note in the README first.
+      - "127.0.0.1:8080:8080"
+    environment:
+      TYREKICK_TOKEN: ${TYREKICK_TOKEN:?set TYREKICK_TOKEN in .env or the environment}
+      # Set to "true" ONLY when a reverse proxy you control terminates every
+      # request and overwrites X-Forwarded-For. It is a client-supplied header:
+      # trusting it on a directly exposed port lets any caller forge a fresh
+      # rate-limit key per request. Default false = key on the peer address.
+      # TRUST_PROXY: "true"
+      # Optional integrations — uncomment and set to enable:
+      # DISCORD_WEBHOOK: ${DISCORD_WEBHOOK}
+      # TYREKICK_REVIEW_KEY: ${TYREKICK_REVIEW_KEY}
+      # ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      # AI_DAILY_CAP: "500"
+      # Rate limiting (per IP). 0 disables either one.
+      # INGEST_RATE_LIMIT: "15"
+      # INGEST_RATE_PERIOD_SECONDS: "60"
+      # READ_RATE_LIMIT: "120"
+      # READ_RATE_PERIOD_SECONDS: "60"
+    volumes:
+      # A named volume so the SQLite file survives container recreation and
+      # gets the right ownership automatically (see README for the
+      # bind-mount alternative and its permissions caveat).
+      - tyrekick-data:/data
+    restart: unless-stopped
+
+volumes:
+  tyrekick-data:
