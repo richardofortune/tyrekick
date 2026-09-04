@@ -150,3 +150,9 @@ scale with your hosting:
 
 Never "fix" webhook visibility by routing through a third party — that
 reintroduces exactly the middleman Tyrekick exists to remove.
+
+Everything above protects the **ingest** (who can post feedback). Controlling
+who can **view the prototype** in the first place is a separate concern — if the
+page itself should be private, put an access gate in front of it. See
+[the access gate](access-gate.md) for a zero-backend, Tyrekick-branded option on
+Cloudflare Pages, or Cloudflare Access for per-person control.
