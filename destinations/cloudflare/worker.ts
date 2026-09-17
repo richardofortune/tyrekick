@@ -333,8 +333,12 @@ function requireAuth(request: Request, env: Env): Response | null {
 function closedSince(env: Env): string | null {
   const raw = (env.TYREKICK_OPEN_UNTIL ?? "").trim();
   if (!raw) return null; // absent/empty = never closes (every pre-window worker)
+  // ISO-8601 only, as documented. Date.parse alone is too forgiving: it reads
+  // "2026-9-15" as a real (timezone-dependent) instant, and a typo must never
+  // silently shut a live review.
+  if (!/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2}))?$/.test(raw)) return null;
   const t = Date.parse(raw);
-  if (!Number.isFinite(t)) return null; // a typo must never silently shut a live review
+  if (!Number.isFinite(t)) return null;
   return Date.now() >= t ? raw : null;
 }
 

@@ -130,7 +130,7 @@ describe("review window — ingest gate", () => {
 
   // A typo in the var can fail to CLOSE a review; it must never silently shut
   // a live one. This is the single point of failure for back-compat.
-  it.each(["", "   ", "not-a-date", "next friday", "2026-9-15"])(
+  it.each(["", "   ", "not-a-date", "next friday", "2026-9-15", "15/09/2026"])(
     "fails OPEN for an unusable window value (%j)",
     async (raw) => {
       const kv = fakeKV();
