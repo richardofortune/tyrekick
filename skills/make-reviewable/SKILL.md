@@ -211,6 +211,16 @@ claude mcp add tyrekick \
   -- npx tyrekick-mcp
 ```
 
+**Password-protect the page?** Only if the human asked for it (or the prototype
+is clearly not for strangers and they hosted on Cloudflare Pages). Add
+`--password "<pw>"` to the `init` line above together with
+`--url https://<slug>.pages.dev/`, or run `npx tyrekick lock --password "<pw>"
+--project <slug>` afterwards. Either writes `_worker.js` beside the page and sets
+the `PAGE_PASSWORD` Pages secret; **redeploy the folder afterwards** or the
+lock is not live. It is Cloudflare Pages only (tunnels and GitHub Pages get
+nothing) and it gates viewing the page, not the feedback worker. Put the
+password in the ask, never in a committed file. Details: `docs/page-password.md`.
+
 `init` also bookmarks worker destinations in `~/.tyrekick/deployments.json`
 (outside any repo, no secrets in it: worker URL, project slug, date added), so
 `npx tyrekick status --all` can later list every review this machine has wired
@@ -281,7 +291,8 @@ Tell the human, in plain words: the one URL to share (and, if you hosted it,
 where it now lives), where feedback goes, whether their agent can read it back
 (worker: yes / Discord-only: no — and how to upgrade later), when the review
 stops accepting comments (the 14-day window from step 2b, and that
-`npx tyrekick reopen --days 14` reopens it on the same URL), and the drafted
+`npx tyrekick reopen --days 14` reopens it on the same URL), whether the page
+has a password (and that it went into the ask, not a file), and the drafted
 ask. If anything failed (wrangler auth, Pages/tunnel, KV create, test POST),
 say exactly which step and what you need.
 

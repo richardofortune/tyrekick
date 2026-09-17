@@ -22,6 +22,7 @@ heading, and any page errors attached.
 | [Taking a prototype public](going-public.md) | **Start here** if you're sharing widely — the order to set the three capabilities up in, and the one rule (shared review stays off) |
 | [Rate limiting](rate-limiting.md) | Cap what one IP can cost you on a public URL — two config lines and a redeploy |
 | [Shared review](shared-review.md) | Let reviewers see each other's pins — for a private link only; the trade explained |
+| [Page password](page-password.md) | Put the prototype itself behind one shared password — private staging on Cloudflare Pages |
 | [AI auto-reply](ai-auto-reply.md) | A bounded, one-line AI acknowledgement per comment — off by default, cents to run |
 | [Payload reference](payload.md) | Schema v2 field by field, plus the Discord message format |
 | [Troubleshooting & FAQ](troubleshooting.md) | Common problems, storage keys, privacy guarantees, SPA notes |

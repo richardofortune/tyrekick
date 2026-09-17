@@ -7,6 +7,7 @@
  *   npx tyrekick init --yes …       non-interactive (for agents/CI)
  *   npx tyrekick status             print a one-shot status dashboard
  *   npx tyrekick close | reopen     stop / resume accepting comments (same URL, data kept)
+ *   npx tyrekick lock | unlock      put a password in front of the hosted page (Cloudflare Pages)
  *   npx tyrekick disable | enable   remove/restore the widget, keeping all feedback data
  *   npx tyrekick remove [--teardown] safely uninstall (add --teardown to also delete the cloud worker)
  *
@@ -27,6 +28,9 @@ import {
   printMcpAdd,
   cmdStatus,
   cmdWindow,
+  cmdLock,
+  cmdUnlock,
+  pagesSlug,
   rememberDeployment,
   recordWidgetFile,
   cmdDisable,
@@ -49,6 +53,8 @@ Usage:
   npx tyrekick status --all --open   ...and list the open comments under each
   npx tyrekick close           Stop accepting new comments. Same URL; page, data and read-back stay live
   npx tyrekick reopen          Accept comments again for another wave (--days 14, or --never to remove the window)
+  npx tyrekick lock            Password-protect the hosted page (Cloudflare Pages only; --password <pw>, --project <slug>)
+  npx tyrekick unlock          Remove the page password
   npx tyrekick disable         Remove the widget but keep the worker + all data (reversible)
   npx tyrekick enable          Restore a disabled widget
   npx tyrekick remove          Uninstall local wiring (widget tag + MCP registration)
@@ -59,6 +65,7 @@ init options:
   --file <path>        HTML file to inject into (default: auto-detect index.html)
   --project <name>     Project label (default: current folder name)
   --url <url>          Public review URL, for og:url so the unfurl is canonical
+  --password <pw>      Also password-protect the page (Cloudflare Pages only; same as \`lock\`)
   --app-version <v>    Version string (default: git short SHA, else "v0.1")
   --transport <t>      "discord" | "json" (default: auto-detect from URL)
   --no-test            Skip sending the test comment
@@ -85,6 +92,7 @@ function parseArgs(argv) {
     else if (a === "--file") args.file = argv[++i];
     else if (a === "--project") args.project = argv[++i];
     else if (a === "--url") args.url = argv[++i];
+    else if (a === "--password") args.password = argv[++i];
     else if (a === "--app-version") args.appVersion = argv[++i];
     else if (a === "--transport") args.transport = argv[++i];
     else args._.push(a);
@@ -195,6 +203,9 @@ async function initCmd(args) {
   if (transport === "json") rememberDeployment(webhook, project);
   rl?.close();
 
+  // 4b. Page password (opt-in). Needs the Pages slug, which --url gives us.
+  if (args.password) await cmdLock({ password: args.password, slug: pagesSlug(reviewUrl), yes: true });
+
   // 5. Agent loop pointer (worker destinations only)
   if (transport === "json") {
     console.log("\nTo let your coding agent pull feedback back (MCP):");
@@ -221,6 +232,10 @@ async function main() {
       return cmdWindow({ days: args.never ? null : Number(args.days ?? 0), verb: "close" });
     case "reopen":
       return cmdWindow({ days: args.never ? null : Number(args.days ?? 14), verb: "reopen" });
+    case "lock":
+      return cmdLock({ password: args.password, slug: args.project, yes: !!args.yes });
+    case "unlock":
+      return cmdUnlock();
     case "disable":
       return cmdDisable();
     case "enable":
@@ -234,7 +249,7 @@ async function main() {
       console.log(HELP);
       return;
     default:
-      fail(`Unknown command "${cmd}". Try: npx tyrekick (menu) — or init | status | close | reopen | disable | enable | remove`);
+      fail(`Unknown command "${cmd}". Try: npx tyrekick (menu) — or init | status | close | reopen | lock | unlock | disable | enable | remove`);
   }
 }
 

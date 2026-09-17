@@ -29,7 +29,8 @@ leave it off (the default). See [Taking a prototype public](going-public.md).
 
 There's no finer-grained scoping available — reviewers never log in, which is
 the whole point of Tyrekick. The key is a door for a private link, not a secret
-password.
+password. If you need the *page itself* behind a password, that is a separate
+door: see [Page password](page-password.md).
 
 ## Setup (private link)
 

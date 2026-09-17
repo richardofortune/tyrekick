@@ -6,7 +6,7 @@
  * flag-driven router (cli.mjs) both call into here.
  */
 import { existsSync, readFileSync, writeFileSync, unlinkSync, readdirSync, statSync, mkdirSync } from "node:fs";
-import { basename, resolve, dirname, join } from "node:path";
+import { basename, resolve, dirname, join, relative } from "node:path";
 import { homedir } from "node:os";
 import { execSync } from "node:child_process";
 import { createInterface } from "node:readline/promises";
@@ -1175,4 +1175,99 @@ export async function cmdWindow({ days, verb }) {
       "✔ closed — no new comments. Same URL: the page, the stored feedback and your agent's read-back all still work.",
     );
   } else console.log(`✔ open until ${value}. Same URL — nothing moved.`);
+}
+
+// ---------------------------------------------------------------------------
+// Page password — lock / unlock (Cloudflare Pages only)
+// ---------------------------------------------------------------------------
+//
+// One shared password in front of the hosted prototype, for a private link
+// that must not be guessable-and-open. Distinct from the review key (who can
+// READ comments) and the review window (who can WRITE them): this gates who can
+// see the page at all. It works by copying destinations/cloudflare/pages-gate.js
+// to `_worker.js` in the deploy folder — Pages runs that file for every request
+// and it decides whether to serve the static files. The password itself is a
+// Pages secret, so it is never in the repo or in page source.
+
+const GATE_TEMPLATE = new URL("../destinations/cloudflare/pages-gate.js", import.meta.url);
+const GATE_MARK = "Tyrekick page gate"; // first line of the template; how we know a _worker.js is ours
+
+/**
+ * The Pages project slug for a `<slug>.pages.dev` URL, or null for any other
+ * host. The gate is Pages-only, so a non-Pages URL is a "can't", not a guess.
+ */
+export function pagesSlug(url) {
+  const m = String(url || "").match(/^https?:\/\/(?:[^/.]+\.)?([^./]+)\.pages\.dev(?:[/?#]|$)/i);
+  return m ? m[1] : null;
+}
+
+/** Where the deploy folder is, and the slug it deploys to, from what init recorded. */
+function gateTarget({ slug: explicit }) {
+  const w = findWidget();
+  const file = w.file || detectHtml();
+  const dir = dirname(resolve(file));
+  const pc = readProjectConfig();
+  const pv = linkPreview(readFileSync(file, "utf8"));
+  const slug = explicit || pc.slug || pagesSlug(pc.liveUrl) || pagesSlug(pv.url);
+  return { dir: relative(process.cwd(), dir) || ".", slug, worker: join(dir, "_worker.js") };
+}
+
+const redeployHint = (dir, slug) =>
+  `  Not live until you redeploy:\n    npx wrangler pages deploy ${dir} --project-name ${slug} --branch <production-branch>`;
+
+/**
+ * `tyrekick lock`: write `_worker.js` beside the page and set PAGE_PASSWORD on
+ * the Pages project. Prompts for the password unless --password is given;
+ * refuses to overwrite a `_worker.js` that is not ours.
+ */
+export async function cmdLock({ password, slug, yes = false } = {}) {
+  const t = gateTarget({ slug });
+  if (!t.slug) {
+    fail(
+      "The page password only works on Cloudflare Pages, and I can't tell which Pages project this is.\n" +
+        "  Pass it: npx tyrekick lock --project <slug>   (the <slug> in <slug>.pages.dev)",
+    );
+  }
+  if (existsSync(t.worker) && !readFileSync(t.worker, "utf8").includes(GATE_MARK)) {
+    fail(`${t.worker} already exists and is not the Tyrekick gate — not overwriting it.`);
+  }
+  if (!password) {
+    if (yes) fail("--password is required with --yes");
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    password = (await rl.question("Password reviewers will type: ")).trim();
+    rl.close();
+  }
+  if (!password) fail("A password is required.");
+
+  writeFileSync(t.worker, readFileSync(GATE_TEMPLATE, "utf8"));
+  console.log(`✔ wrote ${t.worker}`);
+  try {
+    execSync(`npx wrangler pages secret put PAGE_PASSWORD --project-name ${t.slug}`, {
+      input: password,
+      stdio: ["pipe", "inherit", "inherit"],
+    });
+    console.log(`✔ PAGE_PASSWORD set on Pages project "${t.slug}"`);
+  } catch {
+    console.log(
+      `⚠ setting the secret failed — the gate file is written and will fail closed until it is set:\n` +
+        `    printf '%s' "<password>" | npx wrangler pages secret put PAGE_PASSWORD --project-name ${t.slug}`,
+    );
+  }
+  console.log(`\n⚠ ${redeployHint(t.dir, t.slug).trim()}`);
+  console.log(`  Link previews still unfurl; reviewers see a password screen first. \`npx tyrekick unlock\` removes it.`);
+}
+
+/** `tyrekick unlock`: delete our `_worker.js`. The secret can stay; nothing reads it. */
+export function cmdUnlock() {
+  const t = gateTarget({});
+  if (!existsSync(t.worker)) {
+    console.log("· no page password here — nothing to unlock.");
+    return;
+  }
+  if (!readFileSync(t.worker, "utf8").includes(GATE_MARK)) {
+    fail(`${t.worker} is not the Tyrekick gate — leaving it alone.`);
+  }
+  unlinkSync(t.worker);
+  console.log(`✔ removed ${t.worker}`);
+  console.log(`\n⚠ ${redeployHint(t.dir, t.slug || "<slug>").trim()}`);
 }

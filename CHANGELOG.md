@@ -3,6 +3,21 @@
 Notable changes to the `tyrekick` widget. The MCP server (`tyrekick-mcp`) is
 versioned separately; see [`mcp/`](mcp/).
 
+## Unreleased
+
+- **A prototype can sit behind a password.** `<slug>.pages.dev` is a public
+  URL, and a private link was only ever private by obscurity. `npx tyrekick
+  lock --password <pw>` (or `init --password`) copies a small
+  [`_worker.js`](destinations/cloudflare/pages-gate.js) beside the page and
+  sets `PAGE_PASSWORD` as a Cloudflare Pages secret; after a redeploy every
+  request to the site meets a password form until the browser holds a cookie
+  minted from that password. It fails closed when the secret is missing, the
+  cookie is an HMAC keyed on the password so rotating it logs everyone out, and
+  the login page keeps the page's `og:` tags and answers 200 so a shared link
+  still unfurls. Cloudflare Pages only; `npx tyrekick unlock` removes it. It
+  gates seeing the page and nothing else: the feedback worker, the review key
+  and the review window are unchanged. See [docs/page-password.md](docs/page-password.md).
+
 ## 0.8.0
 
 - **A review can stand down.** A review link is not one-shot: feedback comes in

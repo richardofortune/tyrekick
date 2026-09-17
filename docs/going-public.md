@@ -74,4 +74,5 @@ set, `projectName` stable. Post the link.
 | --- | --- | --- |
 | [Rate limiting](rate-limiting.md) | Caps what one IP can cost you (KV writes, invocations, spam) | **On** — always add it |
 | [Shared review](shared-review.md) | Reviewers see each other's pins | **Off** — publishes all comments; wrong for public |
+| [Page password](page-password.md) | Only people with the password can open the prototype (Cloudflare Pages) | **Off** — it is the opposite of public |
 | [AI auto-reply](ai-auto-reply.md) | A friendly one-line acknowledgement per comment | Optional — safe on, off by default |

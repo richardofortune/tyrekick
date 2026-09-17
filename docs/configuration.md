@@ -47,6 +47,14 @@ widget, and has no `data-*` attribute at all — it belongs in the
   comment (Haiku, no tools, author-only, pin stays open). Unset = feature
   off. See [CONTRACT.md](../CONTRACT.md) for the guardrails.
 
+## Page-side (not part of `TyrekickConfig` either)
+
+- `PAGE_PASSWORD` — a Cloudflare Pages secret, set by `npx tyrekick lock`. Puts
+  a password screen in front of the hosted prototype. It has no `data-*`
+  attribute on purpose: the widget runs inside a page the browser has already
+  downloaded, so nothing in `TyrekickConfig` could gate viewing it. See
+  [Page password](page-password.md).
+
 ## Delivery behaviour (both transports)
 
 Every submission POSTs with an 8-second timeout and exactly one automatic

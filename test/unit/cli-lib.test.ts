@@ -21,6 +21,7 @@ import {
   renderStatus,
   readinessNote,
   windowValue,
+  pagesSlug,
   setWindowInToml,
   readRegistry,
   rememberDeployment,
@@ -735,5 +736,19 @@ describe("probeWindow — can this worker close at all?", () => {
     const p = await reply(null, false);
     expect(p.reachable).toBe(false);
     expect(p.gated).toBe(false);
+  });
+});
+
+describe("pagesSlug", () => {
+  it("reads the project slug from a pages.dev URL, apex or branch alias", () => {
+    expect(pagesSlug("https://trip-planner.pages.dev/")).toBe("trip-planner");
+    expect(pagesSlug("https://main.trip-planner.pages.dev/demo/")).toBe("trip-planner");
+    expect(pagesSlug("https://trip-planner.pages.dev")).toBe("trip-planner");
+  });
+  it("is null for anything that is not Cloudflare Pages", () => {
+    expect(pagesSlug("https://trip.workers.dev/")).toBeNull();
+    expect(pagesSlug("https://richard.github.io/trip/")).toBeNull();
+    expect(pagesSlug("https://evil.com/x.pages.dev")).toBeNull();
+    expect(pagesSlug(null)).toBeNull();
   });
 });
