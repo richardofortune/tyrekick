@@ -24,10 +24,13 @@ work either.
 
 The fix is to give the page a home:
 
-- **Deploy it** to any static host (Cloudflare Pages, Netlify Drop, GitHub
-  Pages) and share the URL, not the file:
+- **Deploy it** to any static host (Cloudflare, Netlify Drop, GitHub Pages)
+  and share the URL, not the file. On Cloudflare a folder of HTML is a Worker
+  with static assets: a `wrangler.jsonc` of
+  `{ "name": "<slug>", "compatibility_date": "<today>", "assets": { "directory": "./<dir>" } }`
+  and then
   ```bash
-  npx wrangler pages deploy <dir> --project-name <slug> --branch main
+  npx wrangler deploy
   ```
 - **Tunnel a local app** if it needs its own server (e.g. Python/Flask):
   ```bash
@@ -177,7 +180,7 @@ worker, never a raw Discord webhook).
 ```
 
 Your Wrangler login is missing the **KV Write** scope. The message names neither
-the scope nor the product, and `wrangler deploy` / `wrangler pages deploy` keep
+the scope nor the product, and `wrangler deploy` keeps
 working, so the login looks healthy until you touch storage. D1 and R2 fail the
 same way.
 
@@ -206,19 +209,15 @@ wrangler kv namespace create <project-slug>-FEEDBACK
 The binding in `wrangler.toml` stays `FEEDBACK` — only the title changes, and
 `worker.ts` needs no edit.
 
-## The Pages URL 404s after deploying
+## `wrangler pages deploy` says the project does not exist
 
-If `<project>.pages.dev` returns 404 while `<branch>.<project>.pages.dev` works,
-the deploy landed on a **preview** branch. Cloudflare serves the apex domain from
-the project's production branch only, and that branch isn't always `main`.
-
-```bash
-wrangler pages deployment list --project-name <project>   # Environment column
-```
-
-If it says `Preview`, redeploy with `--branch` set to the project's production
-branch. This matters for review links: a preview alias works, but it changes per
-branch, so the URL you hand reviewers should be the apex one.
+Cloudflare folded Pages into Workers. On current wrangler, `wrangler pages
+project create` and `wrangler pages deploy` delegate to `wrangler deploy` and
+make a Worker with static assets at `<name>.<account>.workers.dev`; with
+`--branch` or `--commit-dirty` they refuse instead. Existing `pages.dev`
+projects keep working, but deploy new ones as Workers: a `wrangler.jsonc` with
+`name`, `compatibility_date` and `assets.directory`, then `npx wrangler deploy`.
+The [page password](page-password.md) needs this layout too.
 
 ## Known limitations
 

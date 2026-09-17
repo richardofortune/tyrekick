@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
- * Page gate (Cloudflare Pages `_worker.js`): one shared password in front of a
- * hosted prototype. Gates VIEWING the page; the feedback worker and the review
+ * Page gate (a Worker in front of static assets): one shared password in front
+ * of a hosted prototype. Gates VIEWING the page; the feedback worker and the review
  * key are untouched by it.
  */
 import { describe, it, expect } from "vitest";
@@ -10,7 +10,7 @@ import gate from "../../destinations/cloudflare/pages-gate.js";
 const INDEX = `<!doctype html><html><head><title>Trip planner</title>
 <meta property="og:title" content="Trip planner">
 <meta property="og:description" content="Review it and pin your comments.">
-<meta property="og:url" content="https://trip.pages.dev/">
+<meta property="og:url" content="https://trip.acct.workers.dev/">
 </head><body><h1>Secret prototype</h1></body></html>`;
 
 const ASSETS = {
@@ -23,9 +23,9 @@ const ASSETS = {
 };
 const env = (password?: string) => ({ ASSETS, PAGE_PASSWORD: password });
 const get = (path = "/", cookie?: string) =>
-  new Request(`https://trip.pages.dev${path}`, { headers: cookie ? { cookie } : {} });
+  new Request(`https://trip.acct.workers.dev${path}`, { headers: cookie ? { cookie } : {} });
 const login = (password: string, path = "/") =>
-  new Request(`https://trip.pages.dev${path}`, {
+  new Request(`https://trip.acct.workers.dev${path}`, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ tyrekick_password: password }),
@@ -59,7 +59,7 @@ describe("pages gate", () => {
   it("right password sets a cookie and redirects back; the cookie then opens the page", async () => {
     const res = await gate.fetch(login("hunter2", "/deep/page.html"), env("hunter2"));
     expect(res.status).toBe(303);
-    expect(res.headers.get("location")).toBe("https://trip.pages.dev/deep/page.html");
+    expect(res.headers.get("location")).toBe("https://trip.acct.workers.dev/deep/page.html");
     const sc = res.headers.get("set-cookie") || "";
     expect(sc).toMatch(/HttpOnly/);
     expect(sc).toMatch(/Secure/);
@@ -94,7 +94,7 @@ describe("pages gate", () => {
   });
 
   it("does not misread an app's own form POST as a login attempt", async () => {
-    const req = new Request("https://trip.pages.dev/", {
+    const req = new Request("https://trip.acct.workers.dev/", {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ email: "a@b.c" }),

@@ -1,16 +1,17 @@
 /**
- * Tyrekick page gate — one shared password in front of a Cloudflare Pages site.
+ * Tyrekick page gate — one shared password in front of a static site on
+ * Cloudflare Workers.
  *
- * `npx tyrekick lock` copies this file to `_worker.js` in your deploy folder.
- * Cloudflare Pages runs a `_worker.js` for every request, and this one serves
- * the static files (`env.ASSETS`) only to a browser that has typed the
- * password. It gates VIEWING the prototype; it never touches the feedback
- * worker, the review key, or what reviewers can do once they are in.
+ * `npx tyrekick lock` copies this file to `tyrekick-gate.js` and makes it the
+ * Worker's `main`, with `assets.run_worker_first` so every request comes here
+ * first. It serves the static files (`env.ASSETS`) only to a browser that has
+ * typed the password. It gates VIEWING the prototype; it never touches the
+ * feedback worker, the review key, or what reviewers can do once they are in.
  *
- * Password: a Pages secret named PAGE_PASSWORD (never in this file, never in
+ * Password: a Worker secret named PAGE_PASSWORD (never in this file, never in
  * page source). Not set = fails closed with a 503, never open by accident.
  *
- *     printf '%s' "$PW" | npx wrangler pages secret put PAGE_PASSWORD --project-name <slug>
+ *     printf '%s' "$PW" | npx wrangler secret put PAGE_PASSWORD
  *
  * Session: a cookie holding an HMAC keyed on the password. No store, no
  * sessions to expire; change the password and every cookie stops working.
@@ -112,7 +113,7 @@ export default {
     if (!password) {
       return page(503, {
         title: "Locked",
-        body: `<main><h1>Locked, but no password is set</h1><p>Set the <code>PAGE_PASSWORD</code> secret on this Pages project (<code>npx tyrekick lock</code>), or delete <code>_worker.js</code> and redeploy to open it.</p></main>`,
+        body: `<main><h1>Locked, but no password is set</h1><p>Set the <code>PAGE_PASSWORD</code> secret on this Worker (<code>npx tyrekick lock</code>), or <code>npx tyrekick unlock</code> to open it.</p></main>`,
       });
     }
     const expected = await token(password);

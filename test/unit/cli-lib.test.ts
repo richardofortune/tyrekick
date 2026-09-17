@@ -21,7 +21,8 @@ import {
   renderStatus,
   readinessNote,
   windowValue,
-  pagesSlug,
+  readSiteConfig,
+  setGateInConfig,
   setWindowInToml,
   readRegistry,
   rememberDeployment,
@@ -739,16 +740,41 @@ describe("probeWindow — can this worker close at all?", () => {
   });
 });
 
-describe("pagesSlug", () => {
-  it("reads the project slug from a pages.dev URL, apex or branch alias", () => {
-    expect(pagesSlug("https://trip-planner.pages.dev/")).toBe("trip-planner");
-    expect(pagesSlug("https://main.trip-planner.pages.dev/demo/")).toBe("trip-planner");
-    expect(pagesSlug("https://trip-planner.pages.dev")).toBe("trip-planner");
+describe("page password config", () => {
+  it("parses wrangler.jsonc with comments, and refuses what it cannot parse", () => {
+    expect(readSiteConfig(`{ // site\n "name": "x", /* c */ "assets": { "directory": "." } }`)).toEqual({
+      name: "x",
+      assets: { directory: "." },
+    });
+    expect(readSiteConfig(`{ "url": "https://a.b/c" } // x`)).toEqual({ url: "https://a.b/c" });
+    expect(readSiteConfig("{ name: x }")).toBeNull();
+    expect(readSiteConfig("[]")).toBeNull();
   });
-  it("is null for anything that is not Cloudflare Pages", () => {
-    expect(pagesSlug("https://trip.workers.dev/")).toBeNull();
-    expect(pagesSlug("https://richard.github.io/trip/")).toBeNull();
-    expect(pagesSlug("https://evil.com/x.pages.dev")).toBeNull();
-    expect(pagesSlug(null)).toBeNull();
+
+  it("wires the gate in without losing other keys, and fills in what a fresh config needs", () => {
+    const on = setGateInConfig({ name: "site", assets: { directory: "./public" }, vars: { A: 1 } }, { on: true, name: "x", assetsDir: "." });
+    expect(on).toMatchObject({
+      name: "site",
+      main: "tyrekick-gate.js",
+      assets: { directory: "./public", binding: "ASSETS", run_worker_first: true },
+      vars: { A: 1 },
+    });
+    const fresh = setGateInConfig({}, { on: true, name: "trip", assetsDir: "./dist" });
+    expect(fresh.name).toBe("trip");
+    expect(fresh.assets.directory).toBe("./dist");
+    expect(fresh.compatibility_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("unwires only what it added: a foreign main is left alone", () => {
+    const off = setGateInConfig(
+      { name: "site", main: "tyrekick-gate.js", assets: { directory: ".", binding: "ASSETS", run_worker_first: true } },
+      { on: false, name: "site", assetsDir: "." },
+    );
+    expect(off.main).toBeUndefined();
+    expect(off.assets.binding).toBeUndefined(); // wrangler refuses a binding on an assets-only Worker
+    expect(off.assets.run_worker_first).toBeUndefined();
+    const theirs = setGateInConfig({ main: "app.js", assets: { directory: ".", run_worker_first: true } }, { on: false, name: "s", assetsDir: "." });
+    expect(theirs.main).toBe("app.js");
+    expect(theirs.assets.run_worker_first).toBe(true);
   });
 });

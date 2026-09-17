@@ -5,18 +5,24 @@ versioned separately; see [`mcp/`](mcp/).
 
 ## Unreleased
 
-- **A prototype can sit behind a password.** `<slug>.pages.dev` is a public
-  URL, and a private link was only ever private by obscurity. `npx tyrekick
-  lock --password <pw>` (or `init --password`) copies a small
-  [`_worker.js`](destinations/cloudflare/pages-gate.js) beside the page and
-  sets `PAGE_PASSWORD` as a Cloudflare Pages secret; after a redeploy every
-  request to the site meets a password form until the browser holds a cookie
-  minted from that password. It fails closed when the secret is missing, the
-  cookie is an HMAC keyed on the password so rotating it logs everyone out, and
-  the login page keeps the page's `og:` tags and answers 200 so a shared link
-  still unfurls. Cloudflare Pages only; `npx tyrekick unlock` removes it. It
-  gates seeing the page and nothing else: the feedback worker, the review key
-  and the review window are unchanged. See [docs/page-password.md](docs/page-password.md).
+- **A prototype can sit behind a password.** A `workers.dev` URL is public,
+  and a private link was only ever private by obscurity. `npx tyrekick lock
+  --password <pw>` (or `init --password`) copies a small
+  [gate script](destinations/cloudflare/pages-gate.js) to `tyrekick-gate.js`,
+  makes it the site Worker's `main` with `assets.run_worker_first`, sets
+  `PAGE_PASSWORD` as a Worker secret and deploys. Every request then meets a
+  password form until the browser holds a cookie minted from that password. It
+  fails closed when the secret is missing, the cookie is an HMAC keyed on the
+  password so rotating it logs everyone out, and the login page keeps the
+  page's `og:` tags and answers 200 so a shared link still unfurls. Cloudflare
+  static sites only; `npx tyrekick unlock` reverses it. It gates seeing the
+  page and nothing else: the feedback worker, the review key and the review
+  window are unchanged. See [docs/page-password.md](docs/page-password.md).
+- **Hosting moved from Pages to Workers.** Cloudflare folded Pages into
+  Workers, and on current wrangler `wrangler pages deploy … --branch main` (what
+  the make-reviewable skill and the troubleshooting guide said to run) fails for
+  a new project. Both now deploy a folder as a Worker with static assets
+  (`wrangler.jsonc` + `npx wrangler deploy`).
 
 ## 0.8.0
 

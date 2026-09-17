@@ -1178,58 +1178,124 @@ export async function cmdWindow({ days, verb }) {
 }
 
 // ---------------------------------------------------------------------------
-// Page password — lock / unlock (Cloudflare Pages only)
+// Page password — lock / unlock
 // ---------------------------------------------------------------------------
 //
 // One shared password in front of the hosted prototype, for a private link
 // that must not be guessable-and-open. Distinct from the review key (who can
 // READ comments) and the review window (who can WRITE them): this gates who can
-// see the page at all. It works by copying destinations/cloudflare/pages-gate.js
-// to `_worker.js` in the deploy folder — Pages runs that file for every request
-// and it decides whether to serve the static files. The password itself is a
-// Pages secret, so it is never in the repo or in page source.
+// see the page at all.
+//
+// The site is a Worker with static assets (what `wrangler deploy` makes of a
+// folder of HTML; Cloudflare folded Pages into Workers). Locking means: the
+// gate script becomes the Worker's `main`, `run_worker_first` sends every
+// request through it, and it serves the files via the ASSETS binding only to a
+// browser that has typed the password. The password is a Worker secret, so it
+// is never in the repo or in page source.
 
 const GATE_TEMPLATE = new URL("../destinations/cloudflare/pages-gate.js", import.meta.url);
-const GATE_MARK = "Tyrekick page gate"; // first line of the template; how we know a _worker.js is ours
+const GATE_FILE = "tyrekick-gate.js";
+const GATE_MARK = "Tyrekick page gate"; // first line of the template; how we know a gate file is ours
+const SITE_CONFIG = "wrangler.jsonc";
 
 /**
- * The Pages project slug for a `<slug>.pages.dev` URL, or null for any other
- * host. The gate is Pages-only, so a non-Pages URL is a "can't", not a guess.
+ * Parse the site's wrangler config as JSON. Comments are stripped first (the
+ * file wrangler writes has none, but a hand-edited one may). Returns null when
+ * it still will not parse, so the caller can say "edit it by hand" rather than
+ * clobber it.
  */
-export function pagesSlug(url) {
-  const m = String(url || "").match(/^https?:\/\/(?:[^/.]+\.)?([^./]+)\.pages\.dev(?:[/?#]|$)/i);
-  return m ? m[1] : null;
+export function readSiteConfig(text) {
+  // Strip // and /* */ comments outside strings (a "https://…" value must survive).
+  let out = "";
+  for (let i = 0, inStr = false; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) {
+      out += c;
+      if (c === "\\") out += text[++i] ?? "";
+      else if (c === '"') inStr = false;
+    } else if (c === '"') {
+      inStr = true;
+      out += c;
+    } else if (c === "/" && text[i + 1] === "/") {
+      while (i < text.length && text[i] !== "\n") i++;
+      out += "\n";
+    } else if (c === "/" && text[i + 1] === "*") {
+      i = text.indexOf("*/", i + 2);
+      if (i < 0) break;
+      i++;
+    } else out += c;
+  }
+  try {
+    const v = JSON.parse(out);
+    return v && typeof v === "object" && !Array.isArray(v) ? v : null;
+  } catch {
+    return null;
+  }
 }
 
-/** Where the deploy folder is, and the slug it deploys to, from what init recorded. */
-function gateTarget({ slug: explicit }) {
+/**
+ * The config with the gate wired in (or out). Pure. Keeps every other key.
+ * `assets.directory` is required by wrangler, so a config without one gets the
+ * folder the page lives in.
+ */
+export function setGateInConfig(cfg, { on, name, assetsDir }) {
+  const out = { ...cfg, assets: { ...(cfg.assets || {}) } };
+  if (!out.name) out.name = name;
+  if (!out.compatibility_date) out.compatibility_date = new Date().toISOString().slice(0, 10);
+  if (!out.assets.directory) out.assets.directory = assetsDir;
+  if (on) {
+    out.main = GATE_FILE;
+    out.assets.binding = "ASSETS";
+    out.assets.run_worker_first = true;
+  } else if (out.main === GATE_FILE) {
+    // All three go together: wrangler refuses a binding on an assets-only Worker.
+    delete out.main;
+    delete out.assets.binding;
+    delete out.assets.run_worker_first;
+  }
+  return out;
+}
+
+/** Where things are: the page's folder (assets), the config, the gate file, the worker name. */
+function gateTarget({ slug }) {
   const w = findWidget();
   const file = w.file || detectHtml();
-  const dir = dirname(resolve(file));
-  const pc = readProjectConfig();
-  const pv = linkPreview(readFileSync(file, "utf8"));
-  const slug = explicit || pc.slug || pagesSlug(pc.liveUrl) || pagesSlug(pv.url);
-  return { dir: relative(process.cwd(), dir) || ".", slug, worker: join(dir, "_worker.js") };
+  const rel = relative(process.cwd(), dirname(resolve(file)));
+  const assetsDir = rel ? `./${rel}` : ".";
+  const existing = existsSync(SITE_CONFIG) ? readFileSync(SITE_CONFIG, "utf8") : null;
+  const cfg = existing === null ? {} : readSiteConfig(existing);
+  const name = slug || (cfg && cfg.name) || readProjectConfig().slug || basename(resolve("."));
+  return { assetsDir, cfg, existing, name };
 }
 
-const redeployHint = (dir, slug) =>
-  `  Not live until you redeploy:\n    npx wrangler pages deploy ${dir} --project-name ${slug} --branch <production-branch>`;
+function deploySite() {
+  try {
+    execSync("npx wrangler deploy", { stdio: "inherit" });
+    return true;
+  } catch {
+    console.log("⚠ npx wrangler deploy failed — the config is written; run it again when it works.");
+    return false;
+  }
+}
 
 /**
- * `tyrekick lock`: write `_worker.js` beside the page and set PAGE_PASSWORD on
- * the Pages project. Prompts for the password unless --password is given;
- * refuses to overwrite a `_worker.js` that is not ours.
+ * `tyrekick lock`: wire the gate into wrangler.jsonc, set PAGE_PASSWORD, deploy.
+ * Prompts for the password unless --password is given; refuses to overwrite a
+ * gate file or a config it cannot parse.
  */
 export async function cmdLock({ password, slug, yes = false } = {}) {
   const t = gateTarget({ slug });
-  if (!t.slug) {
+  if (t.cfg === null) {
     fail(
-      "The page password only works on Cloudflare Pages, and I can't tell which Pages project this is.\n" +
-        "  Pass it: npx tyrekick lock --project <slug>   (the <slug> in <slug>.pages.dev)",
+      `${SITE_CONFIG} is here but I can't parse it, so I won't rewrite it. Add these yourself, then \`npx wrangler deploy\`:\n` +
+        `    "main": "${GATE_FILE}",  "assets": { "binding": "ASSETS", "run_worker_first": true, … }`,
     );
   }
-  if (existsSync(t.worker) && !readFileSync(t.worker, "utf8").includes(GATE_MARK)) {
-    fail(`${t.worker} already exists and is not the Tyrekick gate — not overwriting it.`);
+  if (existsSync("wrangler.toml") && readFileSync("wrangler.toml", "utf8").includes('"FEEDBACK"')) {
+    fail("The feedback worker's wrangler.toml is in this folder. The site needs its own folder to be locked.");
+  }
+  if (existsSync(GATE_FILE) && !readFileSync(GATE_FILE, "utf8").includes(GATE_MARK)) {
+    fail(`${GATE_FILE} already exists and is not the Tyrekick gate — not overwriting it.`);
   }
   if (!password) {
     if (yes) fail("--password is required with --yes");
@@ -1239,35 +1305,44 @@ export async function cmdLock({ password, slug, yes = false } = {}) {
   }
   if (!password) fail("A password is required.");
 
-  writeFileSync(t.worker, readFileSync(GATE_TEMPLATE, "utf8"));
-  console.log(`✔ wrote ${t.worker}`);
+  writeFileSync(GATE_FILE, readFileSync(GATE_TEMPLATE, "utf8"));
+  // A page at the project root means the whole folder is the asset dir; keep the
+  // gate, the config and the usual junk from being uploaded as public files.
+  const ignore = join(t.assetsDir, ".assetsignore");
+  if (!existsSync(ignore)) writeFileSync(ignore, `${GATE_FILE}\nwrangler.jsonc\n.wrangler\nnode_modules\n.git\n.tyrekick.json\n`);
+  const cfg = setGateInConfig(t.cfg, { on: true, name: t.name, assetsDir: t.assetsDir });
+  writeFileSync(SITE_CONFIG, JSON.stringify(cfg, null, 2) + "\n");
+  console.log(`✔ wrote ${GATE_FILE} and wired it into ${SITE_CONFIG} (worker: ${cfg.name})`);
+
   try {
-    execSync(`npx wrangler pages secret put PAGE_PASSWORD --project-name ${t.slug}`, {
-      input: password,
-      stdio: ["pipe", "inherit", "inherit"],
-    });
-    console.log(`✔ PAGE_PASSWORD set on Pages project "${t.slug}"`);
+    execSync("npx wrangler secret put PAGE_PASSWORD", { input: password, stdio: ["pipe", "inherit", "inherit"] });
   } catch {
-    console.log(
-      `⚠ setting the secret failed — the gate file is written and will fail closed until it is set:\n` +
-        `    printf '%s' "<password>" | npx wrangler pages secret put PAGE_PASSWORD --project-name ${t.slug}`,
+    // The gate fails closed without the secret, so a failure here locks the site
+    // for everyone rather than nobody — say so and stop before deploying.
+    fail(
+      `setting the secret failed — not deploying, the gate would lock everyone out.\n` +
+        `    printf '%s' "<password>" | npx wrangler secret put PAGE_PASSWORD\n    npx wrangler deploy`,
     );
   }
-  console.log(`\n⚠ ${redeployHint(t.dir, t.slug).trim()}`);
-  console.log(`  Link previews still unfurl; reviewers see a password screen first. \`npx tyrekick unlock\` removes it.`);
+  if (!deploySite()) return;
+  console.log(`✔ locked. Reviewers see a password screen first; link previews still unfurl. \`npx tyrekick unlock\` removes it.`);
 }
 
-/** `tyrekick unlock`: delete our `_worker.js`. The secret can stay; nothing reads it. */
+/** `tyrekick unlock`: unwire the gate, delete the file, deploy. The secret can stay; nothing reads it. */
 export function cmdUnlock() {
   const t = gateTarget({});
-  if (!existsSync(t.worker)) {
+  if (t.existing === null && !existsSync(GATE_FILE)) {
     console.log("· no page password here — nothing to unlock.");
     return;
   }
-  if (!readFileSync(t.worker, "utf8").includes(GATE_MARK)) {
-    fail(`${t.worker} is not the Tyrekick gate — leaving it alone.`);
+  if (t.cfg === null) {
+    fail(`${SITE_CONFIG} is here but I can't parse it. Remove "main" and "assets.run_worker_first" yourself, then \`npx wrangler deploy\`.`);
   }
-  unlinkSync(t.worker);
-  console.log(`✔ removed ${t.worker}`);
-  console.log(`\n⚠ ${redeployHint(t.dir, t.slug || "<slug>").trim()}`);
+  if (existsSync(GATE_FILE)) {
+    if (!readFileSync(GATE_FILE, "utf8").includes(GATE_MARK)) fail(`${GATE_FILE} is not the Tyrekick gate — leaving it alone.`);
+    unlinkSync(GATE_FILE);
+  }
+  writeFileSync(SITE_CONFIG, JSON.stringify(setGateInConfig(t.cfg, { on: false, name: t.name, assetsDir: t.assetsDir }), null, 2) + "\n");
+  console.log(`✔ removed ${GATE_FILE} and unwired it from ${SITE_CONFIG}`);
+  if (deploySite()) console.log("✔ unlocked.");
 }

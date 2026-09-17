@@ -65,18 +65,21 @@ human to run `npx wrangler login` (you can't do it for them).
 
 Pick by who's reviewing:
 
-- **Remote reviewers, static page/build** → deploy the folder to Cloudflare
-  Pages; the printed URL is the review link:
-  ```bash
-  npx wrangler pages deploy <dir> --project-name <slug> --branch main
+- **Remote reviewers, static page/build** → deploy the folder as a Cloudflare
+  Worker with static assets. Write a `wrangler.jsonc` at the project root (not
+  in the folder with the feedback worker's `wrangler.toml`), then deploy; the
+  printed `<slug>.<account>.workers.dev` URL is the review link:
+  ```jsonc
+  { "name": "<slug>", "compatibility_date": "<today, YYYY-MM-DD>", "assets": { "directory": "./<dir>" } }
   ```
-  **Verify you got the apex URL, not a preview alias.** Cloudflare serves
-  `<slug>.pages.dev` from the project's production branch, which is not always
-  `main`. If the apex 404s while `<branch>.<slug>.pages.dev` works, check
-  `npx wrangler pages deployment list --project-name <slug>` — an `Environment`
-  of `Preview` means you deployed to the wrong branch. Redeploy with `--branch`
-  set to the production branch. Hand reviewers the apex URL; a preview alias
-  changes per branch.
+  ```bash
+  npx wrangler deploy
+  ```
+  Do not use `wrangler pages deploy`: Cloudflare folded Pages into Workers, and
+  on current wrangler that command either delegates to `wrangler deploy` or
+  fails with "project does not exist" when given `--branch`. If `<dir>` is the
+  project root, add a `.assetsignore` listing `wrangler.jsonc`, `.wrangler`,
+  `node_modules`, `.git` and `.tyrekick.json` so they are not uploaded.
 - **Remote reviewers, a local-only running app** (e.g. a Python/Flask server) →
   open a tunnel to it:
   ```bash
@@ -116,7 +119,7 @@ grants OAuth scopes individually: only *User Read* and *Background Access* are
 Required on the consent screen, and **KV Write** is an *Additional Access*
 toggle. A login without it fails step 2 below with a bare
 `Authentication error [code: 10000]` that names no scope, while `wrangler deploy`
-and `wrangler pages deploy` keep working — so nothing looks broken until KV.
+keeps working — so nothing looks broken until KV.
 The local `scopes` line in `~/Library/Preferences/.wrangler/config/default.toml`
 records what Wrangler *requested*, not what was granted; don't treat it as proof.
 Pinning an older Wrangler doesn't help either.
@@ -212,14 +215,15 @@ claude mcp add tyrekick \
 ```
 
 **Password-protect the page?** Only if the human asked for it (or the prototype
-is clearly not for strangers and they hosted on Cloudflare Pages). Add
-`--password "<pw>"` to the `init` line above together with
-`--url https://<slug>.pages.dev/`, or run `npx tyrekick lock --password "<pw>"
---project <slug>` afterwards. Either writes `_worker.js` beside the page and sets
-the `PAGE_PASSWORD` Pages secret; **redeploy the folder afterwards** or the
-lock is not live. It is Cloudflare Pages only (tunnels and GitHub Pages get
-nothing) and it gates viewing the page, not the feedback worker. Put the
-password in the ask, never in a committed file. Details: `docs/page-password.md`.
+is clearly not for strangers and it is hosted as a Cloudflare static site from
+step 2). Add `--password "<pw>"` to the `init` line above, or run
+`npx tyrekick lock --password "<pw>"` from the project root afterwards. Either
+writes `tyrekick-gate.js`, wires it into `wrangler.jsonc` (`main`,
+`assets.binding`, `assets.run_worker_first`), sets the `PAGE_PASSWORD` secret
+and runs `wrangler deploy`, so the lock is live when it returns. Cloudflare
+static sites only (tunnels and GitHub Pages get nothing), and it gates viewing
+the page, not the feedback worker. Put the password in the ask, never in a
+committed file. Details: `docs/page-password.md`.
 
 `init` also bookmarks worker destinations in `~/.tyrekick/deployments.json`
 (outside any repo, no secrets in it: worker URL, project slug, date added), so

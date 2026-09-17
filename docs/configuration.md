@@ -49,8 +49,8 @@ widget, and has no `data-*` attribute at all — it belongs in the
 
 ## Page-side (not part of `TyrekickConfig` either)
 
-- `PAGE_PASSWORD` — a Cloudflare Pages secret, set by `npx tyrekick lock`. Puts
-  a password screen in front of the hosted prototype. It has no `data-*`
+- `PAGE_PASSWORD` — a secret on the site's own Worker, set by `npx tyrekick
+  lock`. Puts a password screen in front of the hosted prototype. It has no `data-*`
   attribute on purpose: the widget runs inside a page the browser has already
   downloaded, so nothing in `TyrekickConfig` could gate viewing it. See
   [Page password](page-password.md).
