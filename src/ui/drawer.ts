@@ -325,7 +325,7 @@ export function createDrawer(rt: Runtime): Drawer {
     if (!pop) return;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    const pw = pop.offsetWidth || 280;
+    const pw = pop.offsetWidth || 360;
     const ph = pop.offsetHeight || 160;
     const gap = 16;
     const cx = root.docX - window.scrollX;

@@ -5,6 +5,12 @@ versioned separately; see [`mcp/`](mcp/).
 
 ## Unreleased
 
+- **The thread popover shows a comment in full.** Clicking a pin opened a
+  280px popover that clamped each comment to four lines, like the drawer, so
+  a long comment couldn't be read where it was left. The popover now shows the
+  whole comment and is 360px wide (still capped to the viewport). The drawer
+  keeps its four-line clamp for scanning.
+
 - **A prototype can sit behind a password.** A `workers.dev` URL is public,
   and a private link was only ever private by obscurity. `npx tyrekick lock
   --password <pw>` (or `init --password`) copies a small

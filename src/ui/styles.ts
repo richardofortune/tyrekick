@@ -82,7 +82,7 @@ button:focus-visible,textarea:focus-visible,input:focus-visible,a:focus-visible{
 .drawer-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--tk-line);font-weight:600}
 .drawer-head button{background:var(--tk-surface2);color:var(--tk-ink);border:1px solid var(--tk-line);border-radius:6px;padding:3px 10px;font-size:12px}
 .drawer-controls{display:flex;gap:6px}
-.thread{position:fixed;width:280px;max-width:calc(100vw - 24px);max-height:60vh;display:flex;flex-direction:column;background:var(--tk-paper);color:var(--tk-ink);border:1px solid var(--tk-line);border-radius:12px;box-shadow:0 10px 34px rgba(0,0,0,.28);font-size:13px;z-index:calc(var(--tk-z) + 4)}
+.thread{position:fixed;width:360px;max-width:calc(100vw - 24px);max-height:60vh;display:flex;flex-direction:column;background:var(--tk-paper);color:var(--tk-ink);border:1px solid var(--tk-line);border-radius:12px;box-shadow:0 10px 34px rgba(0,0,0,.28);font-size:13px;z-index:calc(var(--tk-z) + 4)}
 .thread-head{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--tk-line);font-weight:600}
 .thread-head button{background:var(--tk-surface2);color:var(--tk-ink);border:1px solid var(--tk-line);border-radius:6px;padding:3px 10px;font-size:12px}
 .thread-list{flex:1;overflow-y:auto;padding:8px}
@@ -108,6 +108,7 @@ button:focus-visible,textarea:focus-visible,input:focus-visible,a:focus-visible{
 .entry-actions .gotit{background:var(--tk-ok);color:#fff;border-color:transparent;font-weight:600}
 .entry-main{min-width:0}
 .entry .body{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap;word-break:break-word}
+.thread .entry .body{display:block;-webkit-line-clamp:unset;overflow:visible}
 .entry .meta{display:block;margin-top:4px;font-family:var(--tk-mono);font-size:11px;letter-spacing:-.01em;color:var(--tk-ink);opacity:.65}
 .entry.failed .meta{color:var(--tk-flag);opacity:1}
 .entry-actions{display:flex;gap:6px;align-self:flex-end;margin-top:8px}
