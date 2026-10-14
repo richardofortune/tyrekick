@@ -62,6 +62,22 @@ id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
 # Forwarding is fire-and-forget: a Discord outage or rate limit never affects
 # the ingest response the widget sees. Leave unset to disable.
 
+# --- Optional: email via Resend and generic HTTPS webhook notifications ------
+# Notifications for new feedback and resolved/declined comments. Independent of
+# Discord; credentials stay server-side. Set secrets after deploying:
+#
+#     wrangler secret put RESEND_API_KEY
+#     wrangler secret put NOTIFICATION_EMAIL_FROM  # sender on a verified domain
+#     wrangler secret put NOTIFICATION_EMAIL_TO    # one recipient address
+#
+# Email is disabled unless all three are set. For a JSON event endpoint:
+#
+#     wrangler secret put NOTIFICATION_WEBHOOK
+#     wrangler secret put NOTIFICATION_WEBHOOK_TOKEN  # optional bearer token
+#
+# HTTPS only; ten-second timeout; no retries. Failures never fail storage or
+# other notifications. See README.md for the event envelope and data disclosure.
+
 # --- Optional: AI auto-reply (one-line acknowledgement) ----------------------
 # Set an Anthropic API key as a third secret and the worker asks Claude Haiku
 # for ONE short, friendly acknowledgement of each comment, shown only in the

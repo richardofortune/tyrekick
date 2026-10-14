@@ -5,6 +5,13 @@ versioned separately; see [`mcp/`](mcp/).
 
 ## Unreleased
 
+- **Email and generic webhook notifications.** The Cloudflare worker can notify
+  an owner through Resend and POST full feedback events to a configurable HTTPS
+  endpoint, alongside Discord. New comments and resolved/declined updates fan
+  out independently after storage succeeds. Credentials remain worker secrets;
+  delivery failures do not affect feedback collection. See the worker README
+  for setup, payloads, and best-effort delivery behavior.
+
 - **A prototype can sit behind a password.** A `workers.dev` URL is public,
   and a private link was only ever private by obscurity. `npx tyrekick lock
   --password <pw>` (or `init --password`) copies a small

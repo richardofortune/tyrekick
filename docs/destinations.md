@@ -150,3 +150,10 @@ scale with your hosting:
 
 Never "fix" webhook visibility by routing through a third party — that
 reintroduces exactly the middleman Tyrekick exists to remove.
+
+## Email and generic webhook notifications
+
+The worker can notify an owner by email through Resend and POST structured events
+to a generic HTTPS endpoint, alongside its existing Discord mirror. These are
+server-side notifications; the widget still uses the worker's JSON transport.
+See [configuration, event payloads, and delivery behavior](../destinations/cloudflare/README.md#optional-email-and-generic-webhook-notifications).

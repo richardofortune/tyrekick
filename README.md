@@ -40,6 +40,11 @@ Pins stay on the page after you leave a comment (dimmed until you interact) — 
 
 **Sharing a prototype publicly?** Start with [taking a prototype public](docs/going-public.md), then the per-capability guides: [rate limiting](docs/rate-limiting.md) · [shared review](docs/shared-review.md) · [AI auto-reply](docs/ai-auto-reply.md).
 
+The [Cloudflare worker](destinations/cloudflare/README.md#optional-email-and-generic-webhook-notifications)
+can also send notifications by **email via Resend** or **generic HTTPS webhooks**,
+alongside Discord. New comments and resolved or declined comments trigger
+notifications; credentials stay in worker secrets.
+
 ## 60-second quickstart (Discord)
 
 The fastest path is a Discord channel you control — the taster that proves

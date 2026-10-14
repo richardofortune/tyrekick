@@ -326,6 +326,74 @@ Guard rails, all enforced by the worker:
 - `TYREKICK_REVIEW_KEY` is read-only and grants nothing on `/feedback`.
   `TYREKICK_TOKEN` stays server-side and must never reach a browser.
 
+## Optional: email and generic webhook notifications
+
+The worker can notify Discord, email, and a generic HTTPS endpoint independently,
+including all three at once. Notifications run after a successful storage write
+for new comments and for PATCH requests that resolve or decline a comment.
+Approval and reopening do not send notifications. Existing Discord setup below
+continues to work unchanged. Keep the widget pointed at the worker using
+`transport: "json"`; notification credentials belong only in worker secrets.
+
+### Email via Resend
+
+Set all three secrets to enable email delivery:
+
+```bash
+wrangler secret put RESEND_API_KEY
+wrangler secret put NOTIFICATION_EMAIL_FROM
+wrangler secret put NOTIFICATION_EMAIL_TO
+```
+
+Use a Resend API key, a sender on your verified domain such as
+`Tyrekick <feedback@example.com>`, and one recipient address such as
+`owner@example.com`. See the [Resend send-email API](https://resend.com/docs/api-reference/emails/send-email)
+for sender requirements. The recipient is configured by the owner, never taken
+from reviewer input. Emails contain plain text with the project, version,
+reviewer, comment, page URL, element selector, feedback ID, and closure note.
+Leaving any of the three secrets unset disables email.
+
+### Generic webhooks
+
+```bash
+wrangler secret put NOTIFICATION_WEBHOOK
+# Optional, if your endpoint expects bearer authentication:
+wrangler secret put NOTIFICATION_WEBHOOK_TOKEN
+```
+
+The endpoint must use HTTPS and accept JSON POSTs. When configured, the token is
+sent as `Authorization: Bearer <token>`. Redirects are refused to avoid forwarding
+credentials or feedback to another destination. The payload is:
+
+```json
+{
+  "event": "feedback.created",
+  "feedback": {
+    "id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+    "project_name": "demo",
+    "body": "The button is hard to find",
+    "status": "open"
+  }
+}
+```
+
+`feedback` is the **full stored record**, with the same fields returned by
+`GET /feedback/:id`; the example abbreviates it. Events are `feedback.created`,
+`feedback.resolved`, and `feedback.declined`. Only send these records to an
+endpoint you trust: they include reviewer details, page URLs, and captured page
+context. Tokens and notification settings are never included in the payload.
+Leave `NOTIFICATION_WEBHOOK` unset to disable delivery.
+
+Email and generic webhook requests time out after ten seconds. Network errors,
+non-2xx responses, and timeouts never fail storage or another destination. A
+failure emits a worker warning naming only the destination type, without
+credentials or feedback. Delivery is best-effort with no retries or delivery
+guarantee; use the stored feedback as the source of truth. Repeated closure
+PATCHes can produce repeated notifications. Connectivity checks also send
+notifications, identified by `kind: "verification"` on an already-resolved
+record in a `feedback.created` event, so installation can prove delivery.
+No email or webhook is sent until you configure the secrets.
+
 ## Optional: forward every comment to Discord (tee)
 
 Want the human-friendly channel ping AND the agent-queryable store from one

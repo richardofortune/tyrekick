@@ -173,6 +173,13 @@ interface Env {
    * queryable store. Fire-and-forget: forwarding can never fail an ingest.
    */
   DISCORD_WEBHOOK?: string;
+  /** Optional server-side JSON notification endpoint and bearer token. */
+  NOTIFICATION_WEBHOOK?: string;
+  NOTIFICATION_WEBHOOK_TOKEN?: string;
+  /** Email notifications require all three secrets; recipients are owner-configured. */
+  RESEND_API_KEY?: string;
+  NOTIFICATION_EMAIL_FROM?: string;
+  NOTIFICATION_EMAIL_TO?: string;
   /**
    * Optional: enables the SHARED REVIEW view (`wrangler secret put
    * TYREKICK_REVIEW_KEY`). When set, a widget presenting this key may read
@@ -411,6 +418,77 @@ async function forwardResolutionToDiscord(webhook: string, record: FeedbackRecor
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ content }),
   });
+}
+
+/** Notification delivery stays independent of storage and of other destinations. */
+type NotificationEvent = "feedback.created" | "feedback.resolved" | "feedback.declined";
+
+async function postNotification(
+  url: string,
+  headers: Record<string, string>,
+  payload: unknown,
+): Promise<void> {
+  // Do not follow redirects with credentials or reviewer data.
+  if (new URL(url).protocol !== "https:") throw new Error("HTTPS required");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify(payload),
+      redirect: "error",
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error("Notification rejected");
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function notify(env: Env, ctx: ExecutionContext, event: NotificationEvent, record: FeedbackRecord): void {
+  const schedule = (destination: string, task: Promise<void>) => {
+    ctx.waitUntil(task.catch(() => {
+      // Never log the endpoint, credentials, recipient, or reviewer content.
+      console.warn(`Tyrekick ${destination} notification failed`);
+    }));
+  };
+  if (env.DISCORD_WEBHOOK) {
+    schedule("Discord", event === "feedback.created"
+      ? forwardToDiscord(env.DISCORD_WEBHOOK, record)
+      : forwardResolutionToDiscord(env.DISCORD_WEBHOOK, record));
+  }
+  if (env.NOTIFICATION_WEBHOOK) {
+    const headers: Record<string, string> = {};
+    if (env.NOTIFICATION_WEBHOOK_TOKEN) {
+      headers.Authorization = `Bearer ${env.NOTIFICATION_WEBHOOK_TOKEN}`;
+    }
+    schedule("webhook", postNotification(env.NOTIFICATION_WEBHOOK, headers, {
+      event,
+      feedback: record,
+    }));
+  }
+  if (env.RESEND_API_KEY && env.NOTIFICATION_EMAIL_FROM && env.NOTIFICATION_EMAIL_TO) {
+    const action = event === "feedback.created" ? "New feedback" : record.status;
+    const subject = `[Tyrekick] ${action}: ${record.project_name}`.replace(/[\r\n]/g, " ").slice(0, 200);
+    const text = [
+      `${action} for ${record.project_name} (${record.app_version})`,
+      `Reviewer: ${record.reviewer_name || "Anonymous"}`,
+      record.body,
+      `Page: ${record.url}`,
+      `Element: ${record.anchor?.selector || "Unspecified"}`,
+      `Feedback ID: ${record.id}`,
+      ...(record.resolution_note ? [`Note: ${record.resolution_note}`] : []),
+    ].join("\n\n");
+    schedule("email", postNotification("https://api.resend.com/emails", {
+      Authorization: `Bearer ${env.RESEND_API_KEY}`,
+    }, {
+      from: env.NOTIFICATION_EMAIL_FROM,
+      to: [env.NOTIFICATION_EMAIL_TO],
+      subject,
+      text,
+    }));
+  }
 }
 
 /* ------------------------------------------------------------------------ */
@@ -830,12 +908,8 @@ async function handleIngest(request: Request, env: Env, ctx: ExecutionContext): 
     return json({ ok: false, error: "storage_failed" }, 500);
   }
 
-  // Optional Discord tee: one pin feeds both tiers (channel ping for humans,
-  // queryable store for agents). Runs after the response via waitUntil; any
-  // failure is swallowed so forwarding can never break an ingest.
-  if (env.DISCORD_WEBHOOK) {
-    ctx.waitUntil(forwardToDiscord(env.DISCORD_WEBHOOK, record).catch(() => {}));
-  }
+  // Notify only after storage succeeds; each destination runs independently.
+  notify(env, ctx, "feedback.created", record);
 
   // Optional AI acknowledgement tee: when ANTHROPIC_API_KEY is set and this
   // record has no reply yet, generate one asynchronously. Same best-effort
@@ -998,13 +1072,9 @@ async function handlePatch(
     return json({ ok: false, error: "storage_failed" }, 500);
   }
 
-  // Mirror the closure to Discord (best-effort) — the humans who saw the
-  // comment arrive in the channel also see what happened to it.
-  if (
-    env.DISCORD_WEBHOOK &&
-    (record.status === "resolved" || record.status === "declined")
-  ) {
-    ctx.waitUntil(forwardResolutionToDiscord(env.DISCORD_WEBHOOK, record).catch(() => {}));
+  // Keep notification destinations in sync with the existing closure events.
+  if (record.status === "resolved" || record.status === "declined") {
+    notify(env, ctx, `feedback.${record.status}`, record);
   }
 
   return json({ ok: true, item: record });

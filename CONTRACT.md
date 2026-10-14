@@ -563,3 +563,22 @@ the lanes were being waived case-by-case anyway. What REMAINS binding:
 - `LICENSE` is untouchable.
 - Changes to `package.json`, `build.mjs`, or `tsconfig.json` need the owner's
   explicit sign-off in the conversation where they happen.
+
+## Additional worker notifications
+
+The worker optionally fans out successful ingests (`feedback.created`) and
+resolved/declined PATCHes (`feedback.resolved`, `feedback.declined`) to email via
+Resend and a generic HTTPS webhook, independently of the existing Discord mirror.
+Email requires `RESEND_API_KEY`, `NOTIFICATION_EMAIL_FROM`, and
+`NOTIFICATION_EMAIL_TO` (one owner-configured recipient). Generic JSON delivery
+requires `NOTIFICATION_WEBHOOK`, with optional `NOTIFICATION_WEBHOOK_TOKEN` bearer
+authentication. These are worker secrets, never widget configuration.
+
+Generic requests carry `{ event, feedback }`, where `feedback` is the full stored
+record. Email uses plain text. Both new delivery paths refuse redirects, time out
+after ten seconds, and treat exceptions and non-2xx responses as delivery failures.
+Failures produce a destination-only warning and never fail storage, the request,
+or another destination. No retries are attempted. Verification ingests are also
+forwarded; approval/reopening PATCHes are not. Repeated closure PATCHes can notify
+again, matching existing Discord behavior. Payload schema and REST responses are
+unchanged. See the worker README for setup and data disclosure.
