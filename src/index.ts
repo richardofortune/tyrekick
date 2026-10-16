@@ -29,6 +29,8 @@ export interface Resolved {
   captureErrors: boolean;
   /** Shared-review key, or null when each reviewer sees only their own pins. */
   reviewKey: string | null;
+  /** Host-supplied reviewer identity, or null to use the (optional) name field. */
+  reviewer: string | null;
 }
 
 export interface Pin {
@@ -366,11 +368,13 @@ export function init(config: TyrekickConfig): void {
     accent: config.accent || "#FFC53D",
     theme: config.theme === "light" || config.theme === "dark" ? config.theme : "auto",
     branding: config.branding !== false,
-    fieldName: !config.fields || config.fields.name !== false,
+    // A host-supplied reviewer replaces the name field.
+    fieldName: !(typeof config.reviewer === "string" && config.reviewer.trim()) && (!config.fields || config.fields.name !== false),
     transport: config.transport === "discord" ? "discord" : "json",
     persist: config.persist !== false,
     captureErrors: config.captureErrors !== false,
     reviewKey: typeof config.reviewKey === "string" && config.reviewKey ? config.reviewKey : null,
+    reviewer: typeof config.reviewer === "string" && config.reviewer.trim() ? config.reviewer.trim().slice(0, 200) : null,
   };
 
   const host = document.createElement("div");

@@ -5,6 +5,25 @@ versioned separately; see [`mcp/`](mcp/).
 
 ## Unreleased
 
+- **Shared review treats `/page` and `/page/` as the same page.** Many hosts
+  serve a page at both (a full load follows the directory redirect, client-side
+  navigation doesn't), so reviewers arriving different ways couldn't see each
+  other's comments. The worker now ignores a trailing slash when matching.
+
+- **The page can say who the reviewer is.** New `reviewer` option
+  (`data-reviewer`): pages that already know who's signed in pass their
+  identity, the name field disappears, and every comment is attributed to it,
+  both in `reviewer_name` and on the reviewer's own pins and drawer entries.
+  Unset or blank keeps the optional name field as before.
+
+- **Ingest can be restricted to your own server.** Set the Worker secret
+  `TYREKICK_INGEST_SECRET` and `POST /feedback` only accepts comments carrying
+  it in `X-Tyrekick-Ingest-Secret` (constant-time compare; 401 otherwise, before
+  the body is read). For pages whose own server forwards comments, for example
+  over a service binding from a Worker behind Cloudflare Access, so the worker's
+  public URL stops being an open inbox. Unset means open ingest, exactly as
+  before. See [destinations/cloudflare](destinations/cloudflare/README.md#7-only-accept-comments-from-your-own-server-optional).
+
 - **A prototype can sit behind a password.** A `workers.dev` URL is public,
   and a private link was only ever private by obscurity. `npx tyrekick lock
   --password <pw>` (or `init --password`) copies a small

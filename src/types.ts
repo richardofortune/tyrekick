@@ -68,6 +68,15 @@ export interface TyrekickConfig {
    * Rotate the Worker secret to revoke access.
    */
   reviewKey?: string;
+  /**
+   * Host-supplied reviewer identity, for pages that already know who's signed
+   * in (e.g. behind SSO). When set, the name field is hidden and every comment
+   * is attributed to this value: it's sent as `reviewer_name` and shown on the
+   * reviewer's own pins and drawer entries. Display only: a destination that
+   * must trust it should set it server-side too, since the page can't vouch
+   * for itself. Unset = the optional name field as before.
+   */
+  reviewer?: string;
 }
 
 /**

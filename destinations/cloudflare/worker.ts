@@ -167,6 +167,17 @@ interface Env {
    */
   TYREKICK_OPEN_UNTIL?: string;
   /**
+   * Optional: restrict INGEST to a trusted proxy (`wrangler secret put
+   * TYREKICK_INGEST_SECRET`). When set, POST /feedback (and POST /) only accept
+   * requests carrying the same value in the `X-Tyrekick-Ingest-Secret` header;
+   * anything else gets 401 and nothing is stored. Meant for a page whose own
+   * server forwards comments (e.g. over a Cloudflare service binding), so the
+   * worker's public URL stops being an open inbox. Never put it in a page: a
+   * browser can't keep it. Absent or empty = open ingest, exactly as every
+   * worker deployed before this existed behaves. Reads are unaffected.
+   */
+  TYREKICK_INGEST_SECRET?: string;
+  /**
    * Optional: a Discord webhook URL (`wrangler secret put DISCORD_WEBHOOK`).
    * When set, every successfully stored comment is ALSO forwarded to Discord
    * as a readable message — humans get the channel ping, agents keep the
@@ -327,6 +338,26 @@ function requireAuth(request: Request, env: Env): Response | null {
     return json({ ok: false, error: "unauthorized" }, 401);
   }
   return null;
+}
+
+/** Constant-time string comparison, so a wrong secret leaks nothing through timing. */
+function sameSecret(a: string, b: string): boolean {
+  const x = new TextEncoder().encode(a);
+  const y = new TextEncoder().encode(b);
+  let diff = x.length ^ y.length;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x[i] ?? 0) ^ (y[i] ?? 0);
+  return diff === 0;
+}
+
+/**
+ * Ingest gate for TYREKICK_INGEST_SECRET. Null when ingest is open (no secret
+ * configured) or the caller presented the right one; otherwise a 401.
+ */
+function requireIngestSecret(request: Request, env: Env): Response | null {
+  const secret = (env.TYREKICK_INGEST_SECRET ?? "").trim();
+  if (!secret) return null; // absent/empty = open ingest (every pre-existing worker)
+  const presented = request.headers.get("X-Tyrekick-Ingest-Secret") ?? "";
+  return sameSecret(presented, secret) ? null : json({ ok: false, error: "ingest_unauthorized" }, 401);
 }
 
 /** The configured close instant once it has passed; null while the review is open. */
@@ -625,8 +656,15 @@ const SHARED_MAX_LIMIT = 100;
  * oracle for a secret an operator may have reused elsewhere.
  */
 /** Strip query string and hash: "/pricing?ref=x#plans" → "/pricing". */
+/**
+ * The page a route belongs to: query and hash dropped, and a trailing slash
+ * ignored. Many hosts serve a page at both "/docs" and "/docs/" (a full load
+ * follows the directory redirect, client-side navigation doesn't), and a
+ * comment left at one must be visible from the other.
+ */
 function pathnameOf(route: string): string {
-  return route.split("?")[0].split("#")[0];
+  const path = route.split("?")[0].split("#")[0];
+  return path.replace(/\/+$/, "") || "/";
 }
 
 function keyMatches(presented: string, expected: string): boolean {
@@ -778,6 +816,11 @@ async function handleShared(request: Request, env: Env): Promise<Response> {
 
 /** POST / and POST /feedback — open ingest of a widget FeedbackPayload. */
 async function handleIngest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  // Trusted-proxy ingest (TYREKICK_INGEST_SECRET): checked first, before the
+  // body is read, so an outsider learns nothing, not even the window state.
+  const denied = requireIngestSecret(request, env);
+  if (denied) return denied;
+
   // Review window: closed gates INGEST ONLY. Checked before the body is read,
   // so a closed review parses nothing, stores nothing and tees nothing.
   const closed = closedSince(env);

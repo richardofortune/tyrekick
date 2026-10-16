@@ -166,6 +166,16 @@ The worker keeps its open ingest and grows a token-gated management face:
   `handleIngest`, never the router, so it covers both routes and any future
   third; the ingest rate limiter still runs ahead of it, because a closed review
   must not be a free unmetered endpoint.
+  Optionally restricted to a trusted proxy (addendum, 2026-09-30): when the
+  secret `TYREKICK_INGEST_SECRET` is set, both routes require the same value in
+  the `X-Tyrekick-Ingest-Secret` header, compared in constant time. A missing or
+  wrong header answers **401** `{"ok":false,"error":"ingest_unauthorized"}`,
+  checked first in `handleIngest` (ahead of the review window, before the body
+  is read), so an outsider stores nothing and learns nothing. Absent or empty =
+  open ingest, byte-for-byte as before. Management, receipts and shared reads
+  are unaffected. The header is deliberately NOT in the CORS allow-list: it's
+  for a server that forwards comments (e.g. over a Cloudflare service binding),
+  never for a browser.
 - **GET /feedback?status=&route=&since=&limit=** — list records, newest first.
   `status` = open|resolved, `since` = ISO timestamp, `limit` default 50 max 200.
 - **GET /feedback/:id** — full single record.

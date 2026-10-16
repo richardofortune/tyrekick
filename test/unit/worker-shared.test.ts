@@ -181,6 +181,36 @@ describe("worker GET /shared", () => {
     expect(body.pins.map((p: { route: string }) => p.route)).not.toContain("/pricing-archive");
   });
 
+  it("treats /page and /page/ as one page, whichever way each reviewer arrived", async () => {
+    // A full page load follows the host's directory redirect to "/docs/";
+    // client-side navigation stays on "/docs". Same page, same conversation.
+    const env = {
+      FEEDBACK: fakeKV([
+        record({ id: "bbbbbbbb-1111-4ccc-8ddd-eeeeeeeeeeee", route: "/docs/setup" }),
+        record({ id: "bbbbbbbb-2222-4ccc-8ddd-eeeeeeeeeeee", route: "/docs/setup/" }),
+        record({ id: "bbbbbbbb-3333-4ccc-8ddd-eeeeeeeeeeee", route: "/docs/setup-archive/" }),
+        record({ id: "bbbbbbbb-4444-4ccc-8ddd-eeeeeeeeeeee", route: "/" }),
+      ]),
+      TYREKICK_REVIEW_KEY: "rk-secret",
+    } as never;
+    for (const asked of ["/docs/setup", "/docs/setup/"]) {
+      const res = await worker.fetch(
+        get(`https://w.test/shared?project=demo-project&route=${encodeURIComponent(asked)}`, { "X-Tyrekick-Review-Key": "rk-secret" }),
+        env,
+        ctx as never,
+      );
+      const body = await res.json();
+      expect(body.pins.map((p: { route: string }) => p.route).sort()).toEqual(["/docs/setup", "/docs/setup/"]);
+    }
+    // The root page stays the root page.
+    const root = await worker.fetch(
+      get("https://w.test/shared?project=demo-project&route=%2F", { "X-Tyrekick-Review-Key": "rk-secret" }),
+      env,
+      ctx as never,
+    );
+    expect((await root.json()).pins.map((p: { route: string }) => p.route)).toEqual(["/"]);
+  });
+
   it("never exposes another reviewer's env, page_errors, url or session_id", async () => {
     const env = { FEEDBACK: fakeKV([record()]), TYREKICK_REVIEW_KEY: "rk-secret" } as never;
     const res = await worker.fetch(

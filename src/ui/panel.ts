@@ -71,7 +71,7 @@ export function buildPayload(
     route: route(),
     url: location.href,
     body,
-    reviewer_name: rt.cfg.fieldName ? name || null : null,
+    reviewer_name: rt.cfg.reviewer ?? (rt.cfg.fieldName ? name || null : null),
     session_id: rt.sessionId,
     anchor: pin.anchor,
     env: env(),
@@ -321,7 +321,7 @@ export function createPanel(rt: Runtime): Panel {
     const body = deliveredBody(rt, pin, typed);
     const payload = buildPayload(rt, pin, body, name);
     pin.body = body;
-    pin.reviewer = rt.cfg.fieldName ? name || null : null;
+    pin.reviewer = rt.cfg.reviewer ?? (rt.cfg.fieldName ? name || null : null);
     pin.at = payload.created_at;
 
     let res: SendResult = { ok: false };

@@ -168,6 +168,33 @@ same URL, same stored feedback. To take the worker down for good instead, that
 is `npx tyrekick remove --teardown`, which deletes the KV namespace and every
 comment in it.
 
+## 7. Only accept comments from your own server (optional)
+
+A `workers.dev` URL is public, so by default anyone who learns it can post a
+comment. If the reviewed page has a server of its own (for example a Worker
+behind Cloudflare Access that can vouch for who's signed in), let *it* forward
+comments and close the worker's front door:
+
+```bash
+wrangler secret put TYREKICK_INGEST_SECRET
+```
+
+With the secret set, `POST /feedback` (and `POST /`) only accept requests that
+carry the same value in an `X-Tyrekick-Ingest-Secret` header. Anything else gets
+`401 {"ok":false,"error":"ingest_unauthorized"}` and nothing is stored. Your
+server adds the header when it forwards the widget's POST, ideally over a
+[service binding](https://developers.cloudflare.com/workers/runtime-apis/bindings/service-bindings/)
+so the request never crosses the public internet. The widget then posts to your
+server (same origin), not to the worker.
+
+- **Never put the secret in a page.** A browser can't keep a secret, which is
+  why the header isn't in the worker's CORS allow-list.
+- Reading feedback back is unchanged. The MCP server and `GET /feedback` still
+  use `TYREKICK_TOKEN`, and receipts and shared review work as before once your
+  server forwards those GETs too.
+- Leave it unset for the normal, frictionless setup. Unset or empty means open
+  ingest, exactly as before.
+
 ## Same-origin option (no CORS at all)
 
 If your static prototype is itself hosted on **Cloudflare Pages**, you can run
